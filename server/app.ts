@@ -11,6 +11,17 @@ import { SecureFileManager } from './secureFiles';
 import { PRODUCTS, COUPONS } from '../src/data/products';
 import { adminRouter } from './adminRoutes';
 import { runServerSeed } from './seed';
+import { mergeProductCatalog } from './productCatalog';
+import {
+  buildEmailDownloadUrl,
+  buildInvoiceDownloadUrl,
+  buildInvoicePdf,
+  createEmailDownloadToken,
+  getPurchaseEmailLinkTtlMs,
+  hashEmailDownloadToken,
+  sendPurchaseConfirmationEmail,
+  type PurchaseEmailLink,
+} from './purchaseEmail';
 
 // Run initial seed on startup
 runServerSeed().catch(err => console.warn('Startup seed error:', err));
@@ -27,6 +38,11 @@ const EASEBUZZ_BASE_URL = EASEBUZZ_ENV === 'prod'
 
 const easebuzzHash = (data: string): string => {
   return crypto.createHash('sha512').update(data).digest('hex');
+};
+
+const getProductCatalog = async (): Promise<any[]> => {
+  const databaseProducts = await FirebaseRtdb.getAllProducts();
+  return mergeProductCatalog(PRODUCTS, databaseProducts);
 };
 
 const verifyEasebuzzHash = (params: any, salt: string): boolean => {
@@ -146,24 +162,19 @@ app.get('/api/firebase-status', async (req: Request, res: Response) => {
   });
 });
 
-// Public Product API (RTDB with fallback to static PRODUCTS)
+// Public Product API: static products and Admin/Firebase products are merged.
 app.get('/api/products', async (req: Request, res: Response) => {
   try {
-    const products = await FirebaseRtdb.getAllProducts();
-    const activeProducts = products && products.length > 0 
-      ? products.filter((p: any) => p.status !== 'archived')
-      : PRODUCTS;
-    res.json({ success: true, products: activeProducts });
+    res.json({ success: true, products: await getProductCatalog() });
   } catch {
-    res.json({ success: true, products: PRODUCTS });
+    res.json({ success: true, products: mergeProductCatalog(PRODUCTS, []) });
   }
 });
 
 app.get('/api/products/:slugOrId', async (req: Request, res: Response) => {
   try {
     const identifier = req.params.slugOrId.toLowerCase();
-    const products = await FirebaseRtdb.getAllProducts();
-    const list = products && products.length > 0 ? products : PRODUCTS;
+    const list = await getProductCatalog();
     const found = list.find((p: any) => p.id.toLowerCase() === identifier || p.slug.toLowerCase() === identifier);
     if (!found) {
       return res.status(404).json({ success: false, message: 'Product not found.' });
@@ -374,8 +385,7 @@ const handleOrderCreation = async (req: AuthenticatedRequest, res: Response) => 
     let primaryProductId = '';
     let primaryProductName = '';
 
-    const dbProducts = await FirebaseRtdb.getAllProducts();
-    const productList = dbProducts && dbProducts.length > 0 ? dbProducts : PRODUCTS;
+    const productList = await getProductCatalog();
 
     for (const ci of items) {
       const rawId = ci.productId || ci.product?.id || ci.id;
@@ -397,9 +407,6 @@ const handleOrderCreation = async (req: AuthenticatedRequest, res: Response) => 
       const serverPrice = matchedProduct.price;
       calculatedSubtotal += serverPrice * quantity;
 
-      const keyHex1 = Math.random().toString(16).substring(2, 6).toUpperCase();
-      const keyHex2 = Math.random().toString(16).substring(2, 6).toUpperCase();
-
       validatedItems.push({
         productId: matchedProduct.id,
         productTitle: matchedProduct.title,
@@ -407,10 +414,8 @@ const handleOrderCreation = async (req: AuthenticatedRequest, res: Response) => 
         productImage: matchedProduct.image,
         category: matchedProduct.categoryLabel || matchedProduct.category,
         productType: matchedProduct.productType || 'DOWNLOAD',
-        licenseType: ci.licenseType || 'Standard',
         price: serverPrice,
         quantity,
-        licenseKey: `KEY-${matchedProduct.slug.substring(0, 3).toUpperCase()}-${keyHex1}-${keyHex2}`,
         downloadUrl: `/api/downloads/${matchedProduct.id}`,
         fileSize: matchedProduct.fileSize || '12.4 MB',
         version: matchedProduct.version || 'v1.2.0',
@@ -592,6 +597,137 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
   }
 });
 
+const isOrderFulfilled = async (order: any): Promise<boolean> => {
+  if (order.fulfillmentStatus === 'READY') return true;
+  if (!order.userId || !Array.isArray(order.items) || order.items.length === 0) return false;
+
+  const purchases = await FirebaseRtdb.getUserPurchases(order.userId);
+  const hasEveryEntitlement = order.items.every((item: any) => purchases.some((purchase: any) => (
+    purchase.orderId === order.id &&
+    purchase.productId === item.productId &&
+    purchase.accessStatus === 'active'
+  )));
+
+  if (hasEveryEntitlement) {
+    order.fulfillmentStatus = 'READY';
+    order.fulfilledAt = order.fulfilledAt || order.updatedAt || new Date().toISOString();
+    await FirebaseRtdb.saveGlobalOrder(order);
+  }
+  return hasEveryEntitlement;
+};
+
+const createPurchaseEmailLinks = async (order: any): Promise<PurchaseEmailLink[]> => {
+  const createdAt = Date.now();
+  const expiresAt = createdAt + getPurchaseEmailLinkTtlMs();
+  const links: PurchaseEmailLink[] = [];
+  const linkedProductIds = new Set<string>();
+
+  for (const item of order.items || []) {
+    if (!item.productId || linkedProductIds.has(item.productId)) continue;
+    linkedProductIds.add(item.productId);
+
+    const rawToken = createEmailDownloadToken();
+    const tokenHash = hashEmailDownloadToken(rawToken);
+    const purchaseId = `pur_${order.id}_${item.productId}`;
+
+    await FirebaseRtdb.set(`emailDownloadTokens/${tokenHash}`, {
+      tokenHash,
+      userId: order.userId,
+      orderId: order.id,
+      purchaseId,
+      productId: item.productId,
+      productTitle: item.productTitle || item.productId || 'Digital Product',
+      createdAt,
+      expiresAt,
+      used: false,
+    });
+
+    links.push({
+      productId: item.productId,
+      productTitle: item.productTitle || item.productId || 'Digital Product',
+      downloadUrl: buildEmailDownloadUrl(rawToken),
+      expiresAt,
+    });
+  }
+
+  return links;
+};
+
+const createPurchaseInvoiceLink = async (order: any): Promise<string> => {
+  const rawToken = createEmailDownloadToken();
+  const tokenHash = hashEmailDownloadToken(rawToken);
+  const createdAt = Date.now();
+
+  await FirebaseRtdb.set(`invoiceDownloadTokens/${tokenHash}`, {
+    tokenHash,
+    userId: order.userId,
+    orderId: order.id,
+    createdAt,
+    expiresAt: createdAt + getPurchaseEmailLinkTtlMs(),
+    downloadCount: 0,
+    downloadLimit: 10,
+  });
+
+  return buildInvoiceDownloadUrl(rawToken);
+};
+
+const sendPurchaseEmailSafely = async (order: any): Promise<void> => {
+  if (order.emailDelivery?.status === 'sent') return;
+
+  const attemptedAt = new Date().toISOString();
+  const previousAttempts = Number(order.emailDelivery?.attempts || 0);
+
+  try {
+    if (!process.env.RESEND_API_KEY?.trim() || !process.env.RESEND_FROM_EMAIL?.trim()) {
+      order.emailDelivery = {
+        status: 'not_configured',
+        attempts: previousAttempts,
+        lastAttemptAt: attemptedAt,
+        message: 'Resend is not configured.',
+      };
+      await FirebaseRtdb.saveGlobalOrder(order);
+      return;
+    }
+
+    if (!String(order.customer?.email || order.customerEmail || '').trim()) {
+      order.emailDelivery = {
+        status: 'failed',
+        attempts: previousAttempts,
+        lastAttemptAt: attemptedAt,
+        message: 'The order does not contain a customer email address.',
+      };
+      await FirebaseRtdb.saveGlobalOrder(order);
+      return;
+    }
+
+    const links = await createPurchaseEmailLinks(order);
+    const invoiceUrl = await createPurchaseInvoiceLink(order);
+    const result = await sendPurchaseConfirmationEmail(order, links, { invoiceUrl });
+    order.emailDelivery = {
+      status: result.status,
+      attempts: previousAttempts + 1,
+      lastAttemptAt: attemptedAt,
+      ...(result.status === 'sent' ? { sentAt: attemptedAt, emailId: result.emailId } : {}),
+      ...(result.reason ? { message: result.reason.slice(0, 240) } : {}),
+    };
+    await FirebaseRtdb.saveGlobalOrder(order);
+  } catch (error: any) {
+    // Payment and entitlement delivery must remain successful even if the
+    // transactional email provider is temporarily unavailable.
+    order.emailDelivery = {
+      status: 'failed',
+      attempts: previousAttempts + 1,
+      lastAttemptAt: attemptedAt,
+      message: String(error?.message || 'Purchase email delivery failed.').slice(0, 240),
+    };
+    try {
+      await FirebaseRtdb.saveGlobalOrder(order);
+    } catch {
+      // The payment callback must not be converted into a failure here.
+    }
+  }
+};
+
 // Shared server-side verification and synchronization helper
 async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ success: boolean; status?: string; message?: string; orderId?: string }> {
   if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
@@ -604,6 +740,14 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
   }
 
   if (String(globalOrder.paymentStatus).toUpperCase() === 'PAID') {
+    try {
+      if (await isOrderFulfilled(globalOrder)) {
+        await sendPurchaseEmailSafely(globalOrder);
+      }
+    } catch {
+      // A retryable email/fulfillment lookup issue must not change a paid order
+      // into a failed payment response.
+    }
     return { success: true, status: 'PAID', orderId: globalOrder.id, message: 'Already paid' };
   }
 
@@ -688,11 +832,15 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
       productId: item.productId, productTitle: item.productTitle,
       status: 'AVAILABLE', createdAt: now,
       downloadUrl: item.downloadUrl, fileSize: item.fileSize,
-      fileFormat: item.fileFormat, licenseKey: item.licenseKey
+      fileFormat: item.fileFormat
     });
   }
 
   await FirebaseRtdb.setUserCart(userId, []);
+
+  globalOrder.fulfillmentStatus = 'READY';
+  globalOrder.fulfilledAt = now;
+  await FirebaseRtdb.saveGlobalOrder(globalOrder);
 
   await AuditLogger.log({
     requestId: generateRequestId(),
@@ -703,6 +851,8 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
     source: 'EASEBUZZ_CALLBACK',
     metadata: { easebuzzId, amount: expectedAmount },
   });
+
+  await sendPurchaseEmailSafely(globalOrder);
 
   return { success: true, status: 'PAID', orderId: globalOrder.id };
 }
@@ -781,7 +931,7 @@ app.post('/api/payments/easebuzz/reconcile/:orderId', async (req: AuthenticatedR
   }
 });
 
-// Cron Batch Reconciliation for stuck PENDING_PAYMENT orders older than 10 mins
+// Cron reconciliation for stuck payments and retryable purchase emails.
 app.post('/api/payments/easebuzz/reconcile-cron', async (req: Request, res: Response) => {
   try {
     const cronHeader = req.headers['x-cron-secret'] || req.headers['authorization']?.replace('Bearer ', '');
@@ -791,13 +941,22 @@ app.post('/api/payments/easebuzz/reconcile-cron', async (req: Request, res: Resp
 
     const allOrders = await FirebaseRtdb.getAllGlobalOrders();
     const tenMinsAgo = Date.now() - 10 * 60 * 1000;
-    const pendingOrders = allOrders.filter(o => 
-      (o.status === 'PENDING_PAYMENT' || String(o.paymentStatus).toUpperCase() === 'PENDING') &&
-      new Date(o.createdAt || o.date || 0).getTime() < tenMinsAgo
-    );
+    const reconciliationOrders = allOrders.filter((order) => {
+      const paymentStatus = String(order.paymentStatus).toUpperCase();
+      const isStuckPayment = (
+        order.status === 'PENDING_PAYMENT' || paymentStatus === 'PENDING'
+      ) && new Date(order.createdAt || order.date || 0).getTime() < tenMinsAgo;
+      const lastEmailAttempt = new Date(order.emailDelivery?.lastAttemptAt || 0).getTime();
+      const needsEmailRetry = (
+        paymentStatus === 'PAID' &&
+        order.emailDelivery?.status !== 'sent' &&
+        lastEmailAttempt < tenMinsAgo
+      );
+      return isStuckPayment || needsEmailRetry;
+    });
 
     const results = [];
-    for (const ord of pendingOrders) {
+    for (const ord of reconciliationOrders) {
       const resSync = await verifyAndSyncEasebuzzOrder(ord.id);
       results.push({ orderId: ord.id, ...resSync });
     }
@@ -819,11 +978,11 @@ app.post('/api/downloads/:productId/token', requireAuth, async (req: Authenticat
     const purchase = purchases.find((p: any) => p.productId === productId && p.accessStatus === 'active');
 
     if (!purchase) {
-      return res.status(403).json({ success: false, message: 'Active purchase license not found for this product.' });
+      return res.status(403).json({ success: false, message: 'Active purchase access not found for this product.' });
     }
 
     if (purchase.downloadCount >= (purchase.downloadLimit || 10)) {
-      return res.status(403).json({ success: false, message: 'Download limit has been reached for this product license.' });
+      return res.status(403).json({ success: false, message: 'Download limit has been reached for this purchase.' });
     }
 
     const tokenId = `DL-TOK-${crypto.randomBytes(24).toString('base64url')}`;
@@ -883,18 +1042,18 @@ app.get('/api/downloads/stream', async (req: Request, res: Response) => {
     );
 
     if (!purchase) {
-      return res.status(403).send('Active purchase license not found for this download.');
+      return res.status(403).send('Active purchase access not found for this download.');
     }
 
     const currentCount = purchase.downloadCount || 0;
     const limit = purchase.downloadLimit || 10;
     if (currentCount >= limit) {
-      return res.status(403).send('Download limit has been reached for this license.');
+      return res.status(403).send('Download limit has been reached for this purchase.');
     }
 
     // Open the remote object before consuming the one-time token. This avoids
     // burning a customer's token when storage is temporarily unavailable.
-    const upstream = await SecureFileManager.fetchProductFile(tokenData.productId);
+    const source = await SecureFileManager.openProductFile(tokenData.productId);
 
     tokenData.used = true;
     await FirebaseRtdb.set(`downloadTokens/${token}`, tokenData);
@@ -903,7 +1062,7 @@ app.get('/api/downloads/stream', async (req: Request, res: Response) => {
     await FirebaseRtdb.savePurchase(tokenData.userId, purchase.purchaseId, purchase);
 
     const filename = `${tokenData.productId}-package.zip`;
-    SecureFileManager.streamProductFileToResponse(upstream, filename, res);
+    SecureFileManager.streamProductFileToResponse(source, filename, res);
   } catch (err: any) {
     if (!res.headersSent) {
       const isConfigurationError = String(err?.message || '').includes('PRODUCT_DOWNLOAD_URL');
@@ -912,6 +1071,120 @@ app.get('/api/downloads/stream', async (req: Request, res: Response) => {
         .send(isConfigurationError ? 'Product download is not configured yet.' : 'Product download is temporarily unavailable.');
     }
     res.destroy(err);
+  }
+});
+
+app.get('/api/downloads/email', async (req: Request, res: Response) => {
+  try {
+    const rawToken = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!/^[A-Za-z0-9_-]{43}$/.test(rawToken)) {
+      return res.status(400).send('A valid email download token is required.');
+    }
+
+    const tokenHash = hashEmailDownloadToken(rawToken);
+    const tokenPath = `emailDownloadTokens/${tokenHash}`;
+    const tokenData = await FirebaseRtdb.get<any>(tokenPath);
+    if (!tokenData) {
+      return res.status(403).send('Invalid download link.');
+    }
+
+    if (Date.now() > tokenData.expiresAt) {
+      await FirebaseRtdb.delete(tokenPath);
+      return res.status(403).send('Download link has expired. Sign in to your account to create a new link.');
+    }
+
+    if (tokenData.used) {
+      return res.status(403).send('Download link has already been used. Sign in to your account to create a new link.');
+    }
+
+    const purchases = await FirebaseRtdb.getUserPurchases(tokenData.userId);
+    const purchase = purchases.find((candidate: any) => (
+      candidate.purchaseId === tokenData.purchaseId &&
+      candidate.orderId === tokenData.orderId &&
+      candidate.productId === tokenData.productId &&
+      candidate.accessStatus === 'active'
+    ));
+
+    if (!purchase) {
+      return res.status(403).send('Active purchase access not found for this download.');
+    }
+
+    const currentCount = Number(purchase.downloadCount || 0);
+    const limit = Number(purchase.downloadLimit || 10);
+    if (currentCount >= limit) {
+      return res.status(403).send('Download limit has been reached for this purchase.');
+    }
+
+    const source = await SecureFileManager.openProductFile(tokenData.productId);
+
+    tokenData.used = true;
+    tokenData.usedAt = new Date().toISOString();
+    await FirebaseRtdb.set(tokenPath, tokenData);
+
+    purchase.downloadCount = currentCount + 1;
+    await FirebaseRtdb.savePurchase(tokenData.userId, purchase.purchaseId, purchase);
+
+    SecureFileManager.streamProductFileToResponse(source, `${tokenData.productId}-package.zip`, res);
+  } catch (err: any) {
+    if (!res.headersSent) {
+      const isConfigurationError = String(err?.message || '').includes('PRODUCT_DOWNLOAD_URL');
+      return res
+        .status(isConfigurationError ? 503 : 502)
+        .send(isConfigurationError ? 'Product download is not configured yet.' : 'Product download is temporarily unavailable.');
+    }
+    res.destroy(err);
+  }
+});
+
+app.get('/api/invoices/email', async (req: Request, res: Response) => {
+  try {
+    const rawToken = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!/^[A-Za-z0-9_-]{43}$/.test(rawToken)) {
+      return res.status(400).send('A valid invoice token is required.');
+    }
+
+    const tokenHash = hashEmailDownloadToken(rawToken);
+    const tokenPath = `invoiceDownloadTokens/${tokenHash}`;
+    const tokenData = await FirebaseRtdb.get<any>(tokenPath);
+    if (!tokenData) {
+      return res.status(403).send('Invalid invoice link.');
+    }
+
+    if (Date.now() > tokenData.expiresAt) {
+      await FirebaseRtdb.delete(tokenPath);
+      return res.status(403).send('Invoice link has expired. Sign in to your account to view the order.');
+    }
+
+    const currentCount = Number(tokenData.downloadCount || 0);
+    const limit = Number(tokenData.downloadLimit || 10);
+    if (currentCount >= limit) {
+      return res.status(403).send('Invoice download limit has been reached.');
+    }
+
+    const order = await FirebaseRtdb.getGlobalOrder(tokenData.orderId);
+    if (
+      !order ||
+      order.userId !== tokenData.userId ||
+      String(order.paymentStatus).toUpperCase() !== 'PAID'
+    ) {
+      return res.status(403).send('Paid order not found for this invoice.');
+    }
+
+    const invoice = await buildInvoicePdf(order);
+    tokenData.downloadCount = currentCount + 1;
+    tokenData.lastDownloadedAt = new Date().toISOString();
+    await FirebaseRtdb.set(tokenPath, tokenData);
+
+    const orderNumber = String(order.orderNumber || order.id || 'order')
+      .replace(/[^a-zA-Z0-9_-]/g, '-')
+      .slice(0, 80);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="invoice-${orderNumber}.pdf"`);
+    res.setHeader('Content-Length', invoice.length);
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    return res.status(200).send(invoice);
+  } catch {
+    return res.status(500).send('Invoice is temporarily unavailable.');
   }
 });
 

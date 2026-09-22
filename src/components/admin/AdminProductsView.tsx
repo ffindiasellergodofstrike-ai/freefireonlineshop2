@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { Plus, Search, Edit3, Trash2, Copy, Eye, Check, X, Upload, Loader2 } from 'lucide-react';
 import { AdminService } from '../../services/AdminService';
-import linknestCover from '../../assets/images/linknest_pro_cover_1790001123696.jpg';
+
+const linknestCover = '/product-images/linknest-pro.jpg';
 
 interface AdminProductsViewProps {
   products: any[];

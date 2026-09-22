@@ -1,22 +1,24 @@
 # Purchased download setup on Vercel
 
-The product ZIP must not be placed in `public/`, because every visitor could download it without purchasing. The Vercel Function now proxies a server-only HTTPS object-storage URL after it verifies the customer's purchase and one-time download token.
+The product ZIP must not be placed in `public/`, because every visitor could download it without purchasing. The Vercel Function proxies a server-only HTTPS source after it verifies the customer's purchase and one-time download token. Both MEGA shared-file links and direct HTTPS object-storage URLs are supported.
 
 ## Add the LinkNest Pro ZIP
 
-1. In Firebase Console, open **Storage** and upload the real ZIP, for example at `product-files/linknest-pro-template.zip`.
-2. Obtain its HTTPS download URL. Treat this URL as a secret because anyone who knows it can access the object directly.
+1. Upload the real ZIP to MEGA and create a **file** link (not a folder link).
+2. Copy the complete link, including the `#` decryption-key portion. Treat it as a secret because anyone who knows it can decrypt and download the file.
 3. In Vercel, open **Project Settings → Environment Variables** and add:
 
    ```text
-   PRODUCT_DOWNLOAD_URL_LINKNEST_PRO=https://...
+   PRODUCT_DOWNLOAD_URL_LINKNEST_PRO=https://mega.nz/file/FILE_ID#DECRYPTION_KEY
    ```
 
 4. Enable the variable for Production (and Preview if desired), then redeploy.
 
 The environment-variable suffix is derived from the product id: uppercase it and replace punctuation with underscores. For example, `another-product` uses `PRODUCT_DOWNLOAD_URL_ANOTHER_PRODUCT`. `PRODUCT_DOWNLOAD_URL` can be used as a single-product fallback.
 
-Do not commit the paid ZIP or its signed storage URL to this public repository.
+The server decrypts and verifies the MEGA file as a ZIP before it consumes the customer's one-time token. The MEGA link is never sent to the browser. A direct HTTPS URL from Firebase Storage or another object store can be used instead.
+
+Do not commit the paid ZIP or its MEGA/signed storage URL to this public repository.
 
 ## Future Easebuzz activation
 

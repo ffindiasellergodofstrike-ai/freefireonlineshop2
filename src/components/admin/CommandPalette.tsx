@@ -37,7 +37,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
     { name: 'Orders Management', tab: 'orders', icon: ShoppingCart },
     { name: 'Customers & Users', tab: 'customers', icon: Users },
     { name: 'Coupons & Discounts', tab: 'coupons', icon: Tag },
-    { name: 'Licenses & Downloads', tab: 'licenses', icon: FileText },
+    { name: 'Downloads & Access', tab: 'downloads', icon: FileText },
     { name: 'Audit Logs & Security', tab: 'audit', icon: ShieldAlert },
     { name: 'Store Settings', tab: 'settings', icon: Settings },
   ].filter(item => item.name.toLowerCase().includes(query.toLowerCase()));

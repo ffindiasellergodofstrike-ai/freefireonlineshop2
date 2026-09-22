@@ -145,17 +145,17 @@ class WishlistServiceImpl {
     this.saveToStorage();
   }
 
-  public moveToCart(productId: string, licenseType: 'Standard' | 'Extended' = 'Standard'): boolean {
+  public moveToCart(productId: string): boolean {
     const item = this.items.find((i) => i.productId === productId);
     if (!item) return false;
-    CartService.addItem(item.product, licenseType, 1);
+    CartService.addItem(item.product, 1);
     this.removeFromWishlist(productId);
     return true;
   }
 
   public moveAllToCart(): void {
     this.items.forEach((item) => {
-      CartService.addItem(item.product, 'Standard', 1);
+      CartService.addItem(item.product, 1);
     });
     this.items = [];
     this.saveToStorage();

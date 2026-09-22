@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, Plus, Minus, ShieldCheck, Sparkles } from 'lucide-react';
+import { Trash2, Plus, Minus } from 'lucide-react';
 import { CartItem as CartItemType } from '../types';
 import { ProductImage } from './ProductImage';
 import { useApp } from '../context/AppContext';
@@ -10,14 +10,12 @@ interface CartItemProps {
 
 export const CartItem: React.FC<CartItemProps> = ({ item }) => {
   const { removeFromCart, updateCartQuantity, navigate } = useApp();
-  const { product, licenseType, price, quantity } = item;
-
-  const license: 'Standard' | 'Extended' = (licenseType === 'Extended' ? 'Extended' : 'Standard');
+  const { product, price, quantity } = item;
   const itemTotal = price * quantity;
 
   return (
     <div
-      id={`cart-item-${product.id}-${license}`}
+      id={`cart-item-${product.id}`}
       className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 sm:p-5 bg-white rounded-2xl border border-slate-200 shadow-xs hover:border-slate-300 transition-colors"
     >
       {/* Thumbnail + Details */}
@@ -33,16 +31,6 @@ export const CartItem: React.FC<CartItemProps> = ({ item }) => {
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">
               {product.categoryLabel}
-            </span>
-            <span
-              className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md ${
-                license === 'Extended'
-                  ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                  : 'bg-slate-100 text-slate-700'
-              }`}
-            >
-              <ShieldCheck className="w-3 h-3" />
-              {license} License
             </span>
           </div>
 
@@ -66,7 +54,7 @@ export const CartItem: React.FC<CartItemProps> = ({ item }) => {
         <div className="flex items-center border border-slate-200 rounded-xl bg-slate-50 p-1">
           <button
             id={`dec-qty-${product.id}`}
-            onClick={() => updateCartQuantity(product.id, license, quantity - 1)}
+            onClick={() => updateCartQuantity(product.id, quantity - 1)}
             disabled={quantity <= 1}
             className="p-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg hover:bg-white transition-colors"
             aria-label="Decrease quantity"
@@ -78,7 +66,7 @@ export const CartItem: React.FC<CartItemProps> = ({ item }) => {
           </span>
           <button
             id={`inc-qty-${product.id}`}
-            onClick={() => updateCartQuantity(product.id, license, quantity + 1)}
+            onClick={() => updateCartQuantity(product.id, quantity + 1)}
             className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-white transition-colors"
             aria-label="Increase quantity"
           >
@@ -96,7 +84,7 @@ export const CartItem: React.FC<CartItemProps> = ({ item }) => {
         {/* Remove Button */}
         <button
           id={`remove-cart-item-${product.id}`}
-          onClick={() => removeFromCart(product.id, license)}
+          onClick={() => removeFromCart(product.id)}
           className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
           aria-label={`Remove ${product.title} from cart`}
         >

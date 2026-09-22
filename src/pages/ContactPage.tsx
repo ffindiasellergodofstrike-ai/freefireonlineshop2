@@ -152,7 +152,7 @@ export const ContactPage: React.FC = () => {
                       className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                     >
                       <option value="technical">Technical Script Support</option>
-                      <option value="license">Licensing & Commercial Scope</option>
+                      <option value="purchase-access">Purchase & Download Access</option>
                       <option value="custom">Custom Build / Agency Request</option>
                       <option value="billing">Billing or Refund Query</option>
                       <option value="partnership">Product Creator Partnership</option>
@@ -161,7 +161,7 @@ export const ContactPage: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Order / License Key <span className="text-slate-400 font-normal">(optional)</span>
+                      Order Number <span className="text-slate-400 font-normal">(optional)</span>
                     </label>
                     <input
                       type="text"

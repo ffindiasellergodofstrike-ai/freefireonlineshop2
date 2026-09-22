@@ -13,24 +13,62 @@ export interface ProductFilters {
 }
 
 export class ProductService {
+  private static products: Product[] = PRODUCTS;
+  private static listeners = new Set<() => void>();
+  private static refreshPromise: Promise<Product[]> | null = null;
+
+  static getCatalogSnapshot(): Product[] {
+    return this.products;
+  }
+
+  static subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  static async refreshProducts(force = false): Promise<Product[]> {
+    if (this.refreshPromise && !force) return this.refreshPromise;
+
+    const request = (async () => {
+      const response = await fetch('/api/products', { credentials: 'same-origin' });
+      if (!response.ok) throw new Error(`Product catalog returned HTTP ${response.status}.`);
+      const payload = await response.json();
+      if (!payload?.success || !Array.isArray(payload.products)) {
+        throw new Error('Product catalog returned an invalid response.');
+      }
+
+      this.products = payload.products as Product[];
+      this.listeners.forEach((listener) => listener());
+      return this.products;
+    })();
+
+    this.refreshPromise = request;
+
+    try {
+      return await request;
+    } finally {
+      if (this.refreshPromise === request) this.refreshPromise = null;
+    }
+  }
+
   static getAllProducts(): Product[] {
-    return [...PRODUCTS];
+    return [...this.products];
   }
 
   static getProductBySlug(slug: string): Product | undefined {
-    return PRODUCTS.find((p) => p.slug.toLowerCase() === slug.toLowerCase());
+    return this.products.find((p) => p.slug.toLowerCase() === slug.toLowerCase());
   }
 
   static getProductById(id: string): Product | undefined {
-    return PRODUCTS.find((p) => p.id === id);
+    return this.products.find((p) => p.id === id);
   }
 
   static getFeaturedProducts(): Product[] {
-    return PRODUCTS.filter((p) => p.isFeatured);
+    return this.products.filter((p) => p.isFeatured);
   }
 
   static getRecentProducts(): Product[] {
-    return [...PRODUCTS].sort((a, b) => {
+    return [...this.products].sort((a, b) => {
       const dateA = a.updatedAt || a.releasedAt ? new Date(a.updatedAt || a.releasedAt!).getTime() : 0;
       const dateB = b.updatedAt || b.releasedAt ? new Date(b.updatedAt || b.releasedAt!).getTime() : 0;
       return dateB - dateA;
@@ -39,11 +77,11 @@ export class ProductService {
 
   static getProductsByCategory(categorySlug: string): Product[] {
     if (categorySlug === 'all') return this.getAllProducts();
-    return PRODUCTS.filter((p) => p.category === categorySlug);
+    return this.products.filter((p) => p.category === categorySlug);
   }
 
   static getProductsByType(type: ProductType): Product[] {
-    return PRODUCTS.filter((p) => p.productType === type);
+    return this.products.filter((p) => p.productType === type);
   }
 
   static getCategories(): Category[] {
@@ -56,14 +94,14 @@ export class ProductService {
 
   static getRelatedProducts(productId: string, limit = 3): Product[] {
     const current = this.getProductById(productId);
-    if (!current) return PRODUCTS.slice(0, limit);
-    return PRODUCTS.filter(
+    if (!current) return this.products.slice(0, limit);
+    return this.products.filter(
       (p) => p.id !== productId && (p.category === current.category || p.productType === current.productType || p.tags.some((t) => current.tags.includes(t)))
     ).slice(0, limit);
   }
 
   static searchProducts(filters: ProductFilters): { products: Product[]; total: number } {
-    let list = [...PRODUCTS];
+    let list = [...this.products];
 
     // Search query matching title, description, category, tags
     if (filters.query && filters.query.trim() !== '') {

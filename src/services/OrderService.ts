@@ -178,8 +178,6 @@ class OrderServiceImpl {
     const total = Math.max(0, subtotal - discount);
 
     const items: (OrderItem & { product: Product; quantity?: number })[] = cartItems.map((ci) => {
-      const keyHex = Math.random().toString(16).substring(2, 6).toUpperCase();
-      const keyHex2 = Math.random().toString(16).substring(2, 6).toUpperCase();
       return {
         productId: ci.product.id,
         productTitle: ci.product.title,
@@ -187,10 +185,8 @@ class OrderServiceImpl {
         productImage: ci.product.image,
         category: ci.product.categoryLabel,
         productType: ci.product.productType,
-        licenseType: ci.licenseType,
         price: ci.price,
         quantity: ci.quantity,
-        licenseKey: `KEY-${ci.product.slug.substring(0, 3).toUpperCase()}-${keyHex}-${keyHex2}`,
         downloadUrl: ci.product.downloadUrl || `/api/downloads/${ci.product.id}`,
         fileSize: ci.product.fileSize || '25.0 MB',
         version: ci.product.version || 'v1.0.0',

@@ -3,26 +3,21 @@ import {
   User as UserIcon,
   Package,
   Download,
-  Key,
-  Copy,
   LogOut,
   ShieldCheck,
   FolderDown,
   Heart,
   Settings,
   CheckCircle2,
-  ExternalLink,
   Lock,
   Mail,
   Phone,
   ArrowRight,
   Eye,
   KeyRound,
-  FileCode2,
   Calendar,
   Building,
   Globe,
-  Sparkles,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
@@ -104,7 +99,7 @@ export const AccountPage: React.FC = () => {
 
   const handleSecureDownload = async (productId: string, defaultName: string) => {
     try {
-      showToast('info', 'Authorizing Download', 'Validating digital license & token...');
+      showToast('info', 'Authorizing Download', 'Validating purchase access and secure token...');
       const res = await OrderService.requestDownloadToken(productId);
       if (res.success && res.downloadUrl) {
         showToast('success', 'Download Initiated', `Streaming ${defaultName}...`);
@@ -145,13 +140,6 @@ export const AccountPage: React.FC = () => {
     }
   };
 
-  const handleCopy = (text: string, label = 'License Key') => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      showToast('success', `${label} Copied`, text);
-    }
-  };
-
   const handleProtectedDownload = async (orderId: string, productId: string, fileName: string) => {
     showToast('info', 'Verifying Token', `Authorizing digital package for ${fileName}...`);
     try {
@@ -184,7 +172,7 @@ export const AccountPage: React.FC = () => {
           <div className="space-y-2">
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Customer Portal</h1>
             <p className="text-sm text-slate-500 leading-relaxed">
-              Please sign in to access your digital assets, download vault, license keys, and order receipts.
+              Please sign in to access your digital assets, download vault, and order receipts.
             </p>
           </div>
 
@@ -367,7 +355,7 @@ export const AccountPage: React.FC = () => {
                       <div className="min-w-0">
                         <p className="font-extrabold text-slate-900 truncate">{item.product.title}</p>
                         <p className="text-slate-500 mt-0.5 truncate">
-                          {item.licenseType || 'Standard'} • Qty: {item.quantity || 1}
+                          Qty: {item.quantity || 1}
                         </p>
                       </div>
                       <span className="font-mono font-black text-slate-900 shrink-0 text-right">
@@ -395,14 +383,14 @@ export const AccountPage: React.FC = () => {
         </div>
       )}
 
-      {/* Tab 2: Downloads & Licenses */}
+      {/* Tab 2: Downloads */}
       {activeTab === 'downloads' && (
         <div className="space-y-4">
           {downloads.length === 0 ? (
             <EmptyState
               type="orders"
               title="No active downloads found"
-              description="All digital products purchased under this account appear here with license keys and download authorization."
+              description="All digital products purchased under this account appear here with secure download authorization."
               actionText="Browse Catalog"
               actionPath="/products"
             />
@@ -621,7 +609,7 @@ export const AccountPage: React.FC = () => {
                     <div className="min-w-0">
                       <p className="font-black text-slate-900 text-sm truncate">{i.product.title}</p>
                       <p className="text-[10px] font-bold text-slate-500 mt-0.5 truncate">
-                        {i.licenseType} License
+                        Qty: {i.quantity || 1}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">

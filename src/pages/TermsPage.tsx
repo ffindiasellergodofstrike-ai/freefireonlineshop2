@@ -94,11 +94,11 @@ export const TermsPage: React.FC = () => {
       ),
     },
     {
-      id: 'section-11-license-usage-rights',
-      title: '11. License & Usage Rights',
+      id: 'section-11-usage-rights',
+      title: '11. Product Usage Rights',
       content: (
         <p>
-          The permitted scope of use for each digital product depends on the specific usage terms and license supplied with that product. Review our dedicated License & Usage Policy and the specific product description for tier-specific commercial or personal deployment permissions.
+          Your purchase provides access to use and customize the digital product for your own project. Product descriptions may include additional technical or usage restrictions.
         </p>
       ),
     },
@@ -107,7 +107,7 @@ export const TermsPage: React.FC = () => {
       title: '12. Prohibited Use',
       content: (
         <p>
-          You may not redistribute, share publicly, leak, re-sell standalone source files, sub-license, reverse-engineer proprietary security layers, or use any product for unlawful or infringing purposes without express written authorization.
+          You may not redistribute, share publicly, leak, re-sell standalone source files, grant resale rights, reverse-engineer proprietary security layers, or use any product for unlawful or infringing purposes without express written authorization.
         </p>
       ),
     },
@@ -193,7 +193,7 @@ export const TermsPage: React.FC = () => {
       quickSummary={[
         'Comprehensive 20-point terms governing all authorized digital product sales.',
         'Instant electronic delivery upon verified payment confirmation.',
-        'Clear product-specific license and commercial usage permissions.',
+        'Clear product-specific usage and redistribution restrictions.',
         'Fair digital goods refund policy adhering to consumer protection laws.',
       ]}
       sections={sections}

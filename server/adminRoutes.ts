@@ -36,7 +36,6 @@ const productSchema = z.object({
   isFeatured: z.boolean().optional(),
   stock: z.number().int().nonnegative().optional(),
   unlimitedStock: z.boolean().optional(),
-  licenseTypes: z.array(z.any()).optional(),
   features: z.array(z.string()).optional(),
   requirements: z.array(z.string()).optional(),
   faqs: z.array(z.any()).optional(),

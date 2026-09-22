@@ -22,7 +22,6 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
 import { FAQPage } from './pages/FAQPage';
-import { LicensePage } from './pages/LicensePage';
 import { TermsPage } from './pages/TermsPage';
 import { PrivacyPage } from './pages/PrivacyPage';
 import { RefundPage } from './pages/RefundPage';
@@ -75,8 +74,6 @@ const AppContent: React.FC = () => {
         return <ContactPage />;
       case '/faq':
         return <FAQPage />;
-      case '/license':
-        return <LicensePage />;
       case '/terms':
         return <TermsPage />;
       case '/privacy':

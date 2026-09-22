@@ -3,6 +3,7 @@ import { Search, X, ArrowRight, Code2, FileCode, LayoutTemplate, Wrench, Graduat
 import { useApp } from '../context/AppContext';
 import { ProductService } from '../services/ProductService';
 import { Product } from '../types';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 
 interface SearchBarProps {
   className?: string;
@@ -17,6 +18,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   placeholder = 'Search scripts, templates, courses, tools...',
   autoFocus = false,
 }) => {
+  const catalog = useProductCatalog();
   const { navigate } = useApp();
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -32,7 +34,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       setSuggestions([]);
       setIsOpen(false);
     }
-  }, [query]);
+  }, [query, catalog]);
 
   // Click outside to close suggestion dropdown
   useEffect(() => {

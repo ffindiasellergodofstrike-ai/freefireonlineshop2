@@ -27,12 +27,12 @@ export const CATEGORIES: Category[] = [
   },
 ];
 
-const linknestCover = new URL('../assets/images/linknest_pro_cover_1790001123696.jpg', import.meta.url).href;
-const neuraAiCover = new URL('../assets/images/neuraAi.png', import.meta.url).href;
-const finoraCover = new URL('../assets/images/finora.png', import.meta.url).href;
-const learnifyCover = new URL('../assets/images/learnify.png', import.meta.url).href;
-const veloraCover = new URL('../assets/images/velora.png', import.meta.url).href;
-const workhubCover = new URL('../assets/images/workhub.png', import.meta.url).href;
+const linknestCover = '/product-images/linknest-pro.jpg';
+const neuraAiCover = '/product-images/neura-ai.png';
+const finoraCover = '/product-images/finora.png';
+const learnifyCover = '/product-images/learnify.png';
+const veloraCover = '/product-images/velora.png';
+const workhubCover = '/product-images/workhub.png';
 
 export const PRODUCTS: Product[] = [
   {
@@ -83,7 +83,7 @@ export const PRODUCTS: Product[] = [
       'Free deployment guide',
       'Product & payment setup guide',
       'Customization guide',
-      'Commercial license template'
+      'Setup and customization guide'
     ],
     requirements: [
       'Any modern web browser (Chrome, Safari, Firefox, Edge)',
@@ -200,7 +200,7 @@ export const PRODUCTS: Product[] = [
       },
       {
         question: 'Can I use it for my SaaS business?',
-        answer: 'Yes. You can customize the template for your own SaaS, AI, software, automation, or technology product, subject to the included license terms.'
+        answer: 'Yes. You can customize the template for your own SaaS, AI, software, automation, or technology project. The original package may not be redistributed or resold as a competing product.'
       },
       {
         question: 'Does it include a real AI backend?',
@@ -220,11 +220,11 @@ export const PRODUCTS: Product[] = [
       },
       {
         question: 'Are the included images and content real?',
-        answer: 'Demo content is fictional and intended for showcasing the template. Replace it with your own content and properly licensed assets before publishing.'
+        answer: 'Demo content is fictional and intended for showcasing the template. Replace it with your own content and assets you have permission to use before publishing.'
       },
       {
         question: 'Can I sell this template again?',
-        answer: 'No. You may use the template according to the license included with your purchase, but you should not redistribute, resell, or repackage the original source files as another competing template.'
+        answer: 'No. You may customize the purchased template for your own project, but you should not redistribute, resell, or repackage the original source files as another competing template.'
       },
       {
         question: 'Is technical support included?',
@@ -338,7 +338,7 @@ export const PRODUCTS: Product[] = [
       },
       {
         question: 'Can I resell the template?',
-        answer: 'Use and redistribution rights depend on the license included with your purchase. The source package should not be redistributed as a competing template unless the applicable license explicitly permits it.'
+        answer: 'The source package may be customized for your own project, but it should not be redistributed or resold as a competing template.'
       }
     ],
     status: 'active',
@@ -452,7 +452,7 @@ export const PRODUCTS: Product[] = [
       },
       {
         question: 'Can I resell the source code?',
-        answer: 'Resale and redistribution rights depend on the license supplied with the product. The source should not be redistributed as a competing template unless the applicable license explicitly permits it.'
+        answer: 'The source may be customized for your own project, but it should not be redistributed or resold as a competing template.'
       }
     ],
     status: 'active',
@@ -574,7 +574,7 @@ export const PRODUCTS: Product[] = [
       },
       {
         question: 'Can I resell the template?',
-        answer: 'Usage and redistribution rights depend on the license supplied with the product. The source code should not be redistributed or sold as a competing template unless the applicable license explicitly permits it.'
+        answer: 'The source code may be customized for your own project, but it should not be redistributed or sold as a competing template.'
       }
     ],
     status: 'active',
@@ -718,4 +718,3 @@ export const COUPONS: Coupon[] = [
     minSpend: 40,
   },
 ];
-

@@ -106,10 +106,10 @@ export const AdminPage: React.FC = () => {
         <AdminCouponsView />
       )}
 
-      {activeTab === 'licenses' && (
+      {activeTab === 'downloads' && (
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
-          <h3 className="text-lg font-bold mb-4">Issued Licenses & Downloads</h3>
-          <p className="text-sm text-slate-500">Manage user download limits and active product licenses.</p>
+          <h3 className="text-lg font-bold mb-4">Downloads & Purchase Access</h3>
+          <p className="text-sm text-slate-500">Manage user download limits and active product access.</p>
         </div>
       )}
 

@@ -4,8 +4,10 @@ import { Modal } from './Modal';
 import { useApp } from '../context/AppContext';
 import { ProductService } from '../services/ProductService';
 import { Product } from '../types';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 
 export const QuickSearchModal: React.FC = () => {
+  const catalog = useProductCatalog();
   const { isQuickSearchOpen, setIsQuickSearchOpen, navigate } = useApp();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Product[]>([]);
@@ -17,7 +19,7 @@ export const QuickSearchModal: React.FC = () => {
     } else {
       setResults(ProductService.getFeaturedProducts().slice(0, 4));
     }
-  }, [query]);
+  }, [query, catalog]);
 
   const handleSelect = (slug: string) => {
     setIsQuickSearchOpen(false);

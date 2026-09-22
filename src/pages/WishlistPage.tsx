@@ -18,7 +18,7 @@ export const WishlistPage: React.FC = () => {
 
   const handleAddAllToCart = () => {
     wishlistItems.forEach((item) => {
-      addToCart(item.product, 'Standard', 1);
+      addToCart(item.product, 1);
     });
     showToast('success', 'All Items Added', 'All wishlist products moved to your shopping cart.');
   };
@@ -49,7 +49,7 @@ export const WishlistPage: React.FC = () => {
             </span>
           </div>
           <p className="text-slate-500 text-xs sm:text-sm mt-1">
-            Keep track of the codebases, tools, and courses you plan to license for upcoming projects.
+            Keep track of the codebases, tools, and courses you plan to purchase for upcoming projects.
           </p>
         </div>
 

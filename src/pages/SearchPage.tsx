@@ -4,8 +4,10 @@ import { useApp } from '../context/AppContext';
 import { ProductService, ProductFilters } from '../services/ProductService';
 import { CATEGORIES } from '../data/products';
 import { ProductGrid } from '../components/ProductGrid';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 
 export const SearchPage: React.FC = () => {
+  useProductCatalog();
   const { searchParams, navigate } = useApp();
   const initialQuery = searchParams.q || '';
 

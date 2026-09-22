@@ -3,14 +3,9 @@ import {
   ShieldCheck,
   CreditCard,
   Lock,
-  ArrowRight,
   CheckCircle2,
   Download,
-  Key,
-  Copy,
-  FileText,
   Sparkles,
-  ExternalLink,
   ChevronRight,
   PackageCheck,
   RefreshCw,
@@ -219,16 +214,9 @@ export const CheckoutPage: React.FC = () => {
     }
   };
 
-  const handleCopyKey = (key?: string) => {
-    if (key && navigator.clipboard) {
-      navigator.clipboard.writeText(key);
-      showToast('success', 'License Key Copied', key);
-    }
-  };
-
   const handleSecureDownload = async (productId: string, defaultName: string) => {
     try {
-      showToast('info', 'Authorizing Download', 'Validating digital license & token...');
+      showToast('info', 'Authorizing Download', 'Validating purchase access and secure token...');
       const res = await OrderService.requestDownloadToken(productId);
       if (res.success && res.downloadUrl) {
         showToast('success', 'Download Initiated', `Streaming ${defaultName}...`);
@@ -256,7 +244,7 @@ export const CheckoutPage: React.FC = () => {
         <div className="space-y-2">
           <h1 className="text-2xl font-extrabold text-slate-900">Verifying Your Payment...</h1>
           <p className="text-slate-600 max-w-sm mx-auto text-sm">
-            Please do not refresh or close this window. We are confirming your transaction with the bank to provision your digital license.
+            Please do not refresh or close this window. We are confirming your transaction with the bank to provision your digital download.
           </p>
         </div>
         {verificationError && (
@@ -295,7 +283,7 @@ export const CheckoutPage: React.FC = () => {
             Thank You For Your Purchase!
           </h1>
           <p className="text-slate-600 text-xs sm:text-base max-w-lg mx-auto leading-relaxed">
-            Your digital assets and commercial license certificates have been provisioned and sent to{' '}
+            Your digital products have been provisioned for{' '}
             <strong className="text-slate-900 break-all">{completedOrder.customerEmail}</strong>.
           </p>
         </div>
@@ -307,7 +295,7 @@ export const CheckoutPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Digital Downloads & License Keys Card */}
+      {/* Digital Downloads Card */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden">
         <div className="p-5 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100">
           <div className="flex items-center gap-3 min-w-0">
@@ -497,11 +485,7 @@ export const CheckoutPage: React.FC = () => {
                   className="mt-0.5 rounded text-blue-600 accent-blue-600"
                 />
                 <label htmlFor="agree-terms" className="text-xs text-slate-600 leading-snug cursor-pointer">
-                  I agree to the{' '}
-                  <a href="#/license" className="text-blue-600 font-semibold underline">
-                    Commercial Licensing Terms
-                  </a>{' '}
-                  and the FreeFireShop{' '}
+                  I agree to the FreeFireShop{' '}
                   <a href="#/terms" className="text-blue-600 font-semibold underline">
                     Terms of Service
                   </a>
@@ -520,7 +504,7 @@ export const CheckoutPage: React.FC = () => {
               {isProcessing ? (
                 <>
                   <RefreshCw className="w-5 h-5 animate-spin" />
-                  <span>Generating Licenses & Encrypted Vault...</span>
+                  <span>Preparing Secure Checkout...</span>
                 </>
               ) : (
                 <>
@@ -541,11 +525,11 @@ export const CheckoutPage: React.FC = () => {
 
             <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto space-y-2">
               {cartItems.map((item) => (
-                <div key={`${item.product.id}-${item.licenseType}`} className="pt-2 flex justify-between gap-3 text-xs">
+                <div key={item.product.id} className="pt-2 flex justify-between gap-3 text-xs">
                   <div className="min-w-0">
                     <p className="font-bold text-slate-900 truncate">{item.product.title}</p>
                     <p className="text-slate-500">
-                      {item.licenseType} License • Qty: {item.quantity}
+                      Qty: {item.quantity}
                     </p>
                   </div>
                   <span className="font-mono font-bold text-slate-800">

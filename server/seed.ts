@@ -1,14 +1,25 @@
 import { FirebaseRtdb } from './firebaseRtdb';
 import { PRODUCTS } from '../src/data/products';
+import { isBrowserSafeAssetUrl, normalizeProductAssets } from './productCatalog';
 
 export async function runServerSeed() {
   try {
-    // 1. Seed Products if empty
+    // 1. Add any missing built-in products without overwriting Admin edits.
     const existingProducts = await FirebaseRtdb.get<Record<string, any>>('products');
-    if (!existingProducts || Object.keys(existingProducts).length === 0) {
-      console.log('Seeding initial products into Firebase RTDB...');
-      for (const p of PRODUCTS) {
-        const prod = p as any;
+    const existingProductList = existingProducts
+      ? (Array.isArray(existingProducts) ? existingProducts : Object.values(existingProducts))
+      : [];
+    const existingById = new Map(
+      existingProductList
+        .filter((product: any) => product?.id)
+        .map((product: any) => [product.id, product])
+    );
+
+    for (const p of PRODUCTS) {
+      const prod = normalizeProductAssets(p as any);
+      const existing = existingById.get(prod.id) as any;
+
+      if (!existing) {
         const productRecord = {
           ...prod,
           createdAt: prod.createdAt || new Date().toISOString(),
@@ -16,12 +27,21 @@ export async function runServerSeed() {
           status: 'published',
           stock: prod.stock !== undefined ? prod.stock : 999,
           unlimitedStock: true,
-          licenseTypes: prod.licenseTypes || prod.licenseTerms || [
-            { id: 'standard', name: 'Standard License', price: prod.price },
-            { id: 'extended', name: 'Extended Commercial', price: prod.price * 2 },
-          ],
         };
         await FirebaseRtdb.set(`products/${prod.id}`, productRecord);
+        continue;
+      }
+
+      const hasUnsafeImage = !isBrowserSafeAssetUrl(existing.image);
+      const hasUnsafeGallery = !Array.isArray(existing.gallery)
+        || existing.gallery.length === 0
+        || existing.gallery.some((item: unknown) => !isBrowserSafeAssetUrl(item));
+      const hasLegacyLicenseFields = 'licenseTypes' in existing
+        || 'licenseTerms' in existing
+        || 'extendedPrice' in existing;
+      if (hasUnsafeImage || hasUnsafeGallery || hasLegacyLicenseFields) {
+        const repaired = normalizeProductAssets(existing, prod);
+        await FirebaseRtdb.set(`products/${prod.id}`, repaired);
       }
     }
 

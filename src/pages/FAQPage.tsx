@@ -10,10 +10,10 @@ export const FAQPage: React.FC = () => {
 
   const faqs: FAQItem[] = [
     {
-      category: 'Licensing',
-      question: 'What is the difference between a Standard License and an Extended License?',
+      category: 'General',
+      question: 'Can I customize the files I purchase?',
       answer:
-        'A Standard License allows you or your client to build 1 single end-product or website that is not charged to end users. An Extended License is required if you are creating a SaaS service where end users pay a recurring subscription, or if you plan to resell the bundled application as part of a larger commercial package.',
+        'Yes. You can customize the purchased files for your own project. You may not redistribute or resell the original package as a competing digital product.',
     },
     {
       category: 'Downloads',
@@ -64,10 +64,10 @@ export const FAQPage: React.FC = () => {
         'You can reach out to us via our Contact Page or email us directly. We usually respond to technical support queries within 24-48 hours.',
     },
     {
-      category: 'Licensing',
-      question: 'Is there a commercial license included?',
+      category: 'General',
+      question: 'Can I resell the original downloaded package?',
       answer:
-        'Yes, every purchase includes a commercial usage license that allows you to use the template for your personal brand or a single client project.',
+        'No. Your purchase gives you access to use and customize the files, but the original package may not be redistributed or resold as a competing product.',
     },
     {
       category: 'Technical',
@@ -102,7 +102,7 @@ export const FAQPage: React.FC = () => {
           Frequently Asked Questions
         </h1>
         <p className="text-slate-600 text-sm sm:text-base">
-          Find answers regarding commercial software licensing, digital delivery, version upgrades, and technical support.
+          Find answers regarding digital purchases, delivery, version upgrades, and technical support.
         </p>
 
         {/* Search Bar */}
@@ -110,7 +110,7 @@ export const FAQPage: React.FC = () => {
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search FAQs (e.g. license, refund, PHP version)..."
+            placeholder="Search FAQs (e.g. download, refund, PHP version)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
@@ -120,7 +120,7 @@ export const FAQPage: React.FC = () => {
 
       {/* Category Filter Pills */}
       <div className="flex items-center justify-center gap-2 flex-wrap text-xs">
-        {['all', 'Licensing', 'Downloads', 'Technical', 'General', 'Refunds'].map((cat) => (
+        {['all', 'Downloads', 'Technical', 'General', 'Refunds'].map((cat) => (
           <button
             key={cat}
             onClick={() => setSelectedCategory(cat)}
