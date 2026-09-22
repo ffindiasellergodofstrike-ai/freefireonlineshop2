@@ -25,7 +25,7 @@ export const FAQPage: React.FC = () => {
       category: 'Technical',
       question: 'Is the source code encrypted or hidden?',
       answer:
-        'No. 100% of the source code on FreeFireShop is clean, unencrypted, and human-readable. You can modify any part of the template to fit your specific needs.',
+        'No. 100% of the source code on FFDigital is clean, unencrypted, and human-readable. You can modify any part of the template to fit your specific needs.',
     },
     {
       category: 'Technical',

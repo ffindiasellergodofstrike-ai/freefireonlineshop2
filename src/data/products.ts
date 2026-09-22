@@ -106,7 +106,7 @@ export const PRODUCTS: Product[] = [
       },
       {
         question: 'What happens if I lose my download link?',
-        answer: 'No worries! You can access all your purchased products anytime by logging into your account dashboard on FreeFireShop. Your digital library is permanently stored in your account.'
+        answer: 'No worries! You can access all your purchased products anytime by logging into your account dashboard on FFDigital. Your digital library is permanently stored in your account.'
       },
       {
         question: 'Do I need to know coding to use this template?',
@@ -709,7 +709,7 @@ export const COUPONS: Coupon[] = [
   {
     code: 'SAVE20',
     discountPercent: 20,
-    description: '20% off any digital product on FreeFireShop',
+    description: '20% off any digital product on FFDigital',
   },
   {
     code: 'LAUNCH50',

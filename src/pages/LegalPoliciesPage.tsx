@@ -174,7 +174,7 @@ export const LegalPoliciesPage: React.FC = () => {
             <span>Compliance & Legal Portal</span>
           </div>
           <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
-            Trust & Transparency at <span className="text-blue-400">Free Fire Shop</span>
+            Trust & Transparency at <span className="text-blue-400">FFDigital</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-2xl">
             Explore our complete suite of professional, legally cautious policy frameworks. Built strictly to align with modern digital guidelines and Indian Information Technology laws, detailing your rights and responsibilities.
@@ -234,7 +234,7 @@ export const LegalPoliciesPage: React.FC = () => {
         <div className="space-y-2 max-w-4xl">
           <h4 className="text-sm font-bold text-slate-900">Need Immediate Assistance or Redressal?</h4>
           <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-            All user operations, digital delivery channels, and transactions are strictly monitored to ensure complete compliance with Indian cyber legislation. If you have questions about licensing terms, need to submit DMCA notices, or require formal dispute resolution, please review our <button onClick={() => navigate('/policies/grievance')} className="text-blue-600 font-bold hover:underline">Grievance Redressal Policy</button> or email us at <strong className="text-slate-900">freefireshop.support@gmail.com</strong>.
+            All user operations, digital delivery channels, and transactions are strictly monitored to ensure complete compliance with Indian cyber legislation. If you have questions about licensing terms, need to submit DMCA notices, or require formal dispute resolution, please review our <button onClick={() => navigate('/policies/grievance')} className="text-blue-600 font-bold hover:underline">Grievance Redressal Policy</button> or email us at <strong className="text-slate-900">ffdigital.support@gmail.com</strong>.
           </p>
         </div>
       </div>

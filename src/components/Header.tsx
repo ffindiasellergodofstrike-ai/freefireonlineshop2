@@ -88,14 +88,14 @@ export const Header: React.FC = () => {
               id="header-logo-btn"
               onClick={() => navigate('/')}
               className="flex items-center gap-2 sm:gap-2.5 focus:outline-none group text-left min-w-0"
-              aria-label="FreeFireShop Home"
+              aria-label="FFDigital Home"
             >
               <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-blue-700 via-blue-600 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform shrink-0">
                 <Flame className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300 fill-amber-400" />
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-base sm:text-xl font-extrabold tracking-tight text-slate-900 leading-none">
-                  FreeFire<span className="text-blue-600">Shop</span>
+                  FF<span className="text-blue-600">Digital</span>
                 </span>
                 <span className="hidden sm:block text-[9px] font-extrabold text-slate-400 tracking-[0.1em] uppercase leading-tight mt-1">
                   Premium Digital Goods

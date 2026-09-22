@@ -188,7 +188,7 @@ export const LoginPage: React.FC = () => {
 
             {/* Register Link */}
             <div className="pt-4 text-center text-sm text-slate-600 border-t border-slate-100">
-              New to FreeFireShop?{' '}
+              New to FFDigital?{' '}
               <button
                 type="button"
                 onClick={() => navigate('/register', undefined, searchParams?.redirect ? { redirect: searchParams.redirect } : undefined)}

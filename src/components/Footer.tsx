@@ -86,12 +86,12 @@ export const Footer: React.FC = () => {
                 <Flame className="w-5 h-5 text-amber-300 fill-amber-400" />
               </div>
               <span className="text-2xl font-extrabold text-white tracking-tight">
-                FreeFire<span className="text-blue-400">Shop</span>
+                FF<span className="text-blue-400">Digital</span>
               </span>
             </div>
 
             <p className="text-sm text-slate-400 max-w-sm leading-relaxed">
-              Official digital products store offering authorized scripts, developer utilities, downloadable assets, video walkthroughs, and engineering resources.
+              Official digital products store offering premium website templates, React templates, SaaS scripts, e-commerce templates, and developer assets.
             </p>
 
             {/* Business Entity Block */}
@@ -109,7 +109,7 @@ export const Footer: React.FC = () => {
               <div className="pt-2 border-t border-slate-800/80 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
                 <span className="flex items-center gap-1 text-slate-300">
                   <Mail className="w-3.5 h-3.5 text-blue-400" />
-                  freefireshop.support@gmail.com
+                  ffdigital.support@gmail.com
                 </span>
                 <span className="flex items-center gap-1 text-slate-300">
                   <Phone className="w-3.5 h-3.5 text-emerald-400" />
@@ -286,7 +286,7 @@ export const Footer: React.FC = () => {
       {/* Bottom Bar: Copyright */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 border-t border-slate-800 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-4">
         <p className="text-center sm:text-left">
-          © 2026 FreeFireShop. Owned & Operated by Prankrishna Das. All rights reserved.
+          © 2026 FFDigital. Owned & Operated by Prankrishna Das. All rights reserved.
         </p>
       </div>
     </footer>

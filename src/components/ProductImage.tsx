@@ -55,7 +55,7 @@ export const ProductImage: React.FC<ProductImageProps> = ({ product, className =
           badgeBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
           icon: Wrench,
           lang: 'Node CLI & Rust Engine',
-          codeLine1: '$ npx freefire-optimize --watch --all',
+          codeLine1: '$ npx ffdigital-optimize --watch --all',
           codeLine2: '[OK] Compressed 240 SVGs (-68.4% savings)',
           codeLine3: '[OK] TypeScript declaration map emitted.',
         };

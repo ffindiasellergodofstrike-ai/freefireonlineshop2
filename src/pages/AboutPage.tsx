@@ -25,7 +25,7 @@ export const AboutPage: React.FC = () => {
           Direct creator distribution of production-ready digital goods.
         </h1>
         <p className="text-slate-600 text-base sm:text-lg leading-relaxed">
-          FreeFireShop is a focused digital products store providing authorized developer tools, custom scripts, video walkthroughs, and downloadable starter assets designed for fast, reliable implementation.
+          FFDigital is a focused digital products store providing premium website templates, React templates, SaaS scripts, e-commerce templates, admin/dashboard templates, source code, and developer assets designed for fast, reliable implementation.
         </p>
       </div>
 
@@ -119,7 +119,7 @@ export const AboutPage: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-xs sm:text-sm">
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
             <span className="text-slate-500 font-medium block">Brand Name</span>
-            <span className="text-slate-900 font-bold text-base block">FreeFireShop</span>
+            <span className="text-slate-900 font-bold text-base block">FFDigital</span>
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
@@ -136,8 +136,8 @@ export const AboutPage: React.FC = () => {
 
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
             <span className="text-slate-500 font-medium block">Official Support Email</span>
-            <a href="mailto:freefireshop.support@gmail.com" className="text-blue-600 font-bold text-sm block hover:underline break-all">
-              freefireshop.support@gmail.com
+            <a href="mailto:ffdigital.support@gmail.com" className="text-blue-600 font-bold text-sm block hover:underline break-all">
+              ffdigital.support@gmail.com
             </a>
           </div>
 

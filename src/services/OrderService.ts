@@ -1,7 +1,8 @@
 import { Order, OrderItem, CartItem, Product, OrderStatus, PaymentStatus, DeliveryStatus, DownloadStatus } from '../types';
 import { AuthService } from './AuthService';
 
-const ORDERS_STORAGE_KEY = 'freefireshop_orders_v1';
+const ORDERS_STORAGE_KEY = 'ffdigital_orders_v1';
+const LEGACY_ORDERS_STORAGE_KEY = 'freefireshop_orders_v1';
 
 class OrderServiceImpl {
   private orders: Order[] = [];
@@ -20,7 +21,7 @@ class OrderServiceImpl {
 
   private loadFromStorage() {
     try {
-      const stored = localStorage.getItem(ORDERS_STORAGE_KEY);
+      const stored = localStorage.getItem(ORDERS_STORAGE_KEY) || localStorage.getItem(LEGACY_ORDERS_STORAGE_KEY);
       if (stored) {
         this.orders = JSON.parse(stored);
       } else {

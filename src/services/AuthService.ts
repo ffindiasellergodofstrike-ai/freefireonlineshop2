@@ -1,7 +1,8 @@
 import { User } from '../types';
 
-const USER_STORAGE_KEY = 'freefireshop_auth_user_v1';
-const PREVIOUS_STORAGE_KEY = 'ff_auth_user_v1';
+const USER_STORAGE_KEY = 'ffdigital_auth_user_v1';
+const PREVIOUS_STORAGE_KEY = 'freefireshop_auth_user_v1';
+const LEGACY_STORAGE_KEY = 'ff_auth_user_v1';
 
 export interface RegisterPayload {
   mobile: string;
@@ -28,10 +29,9 @@ class AuthServiceImpl {
   constructor() {
     let cachedUser = localStorage.getItem(USER_STORAGE_KEY);
     if (!cachedUser) {
-      cachedUser = localStorage.getItem(PREVIOUS_STORAGE_KEY);
+      cachedUser = localStorage.getItem(PREVIOUS_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       if (cachedUser) {
         localStorage.setItem(USER_STORAGE_KEY, cachedUser);
-        localStorage.removeItem(PREVIOUS_STORAGE_KEY);
       }
     }
     if (cachedUser) {

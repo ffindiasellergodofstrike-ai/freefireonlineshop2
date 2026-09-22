@@ -2,8 +2,10 @@ import { CartItem, Product, Coupon } from '../types';
 import { ProductService } from './ProductService';
 import { AuthService } from './AuthService';
 
-const CART_STORAGE_KEY = 'freefireshop_cart_v1';
-const COUPON_STORAGE_KEY = 'freefireshop_coupon_v1';
+const CART_STORAGE_KEY = 'ffdigital_cart_v1';
+const LEGACY_CART_STORAGE_KEY = 'freefireshop_cart_v1';
+const COUPON_STORAGE_KEY = 'ffdigital_coupon_v1';
+const LEGACY_COUPON_STORAGE_KEY = 'freefireshop_coupon_v1';
 
 type CartListener = (cart: CartItem[], coupon: Coupon | null) => void;
 
@@ -55,12 +57,12 @@ class CartServiceImpl {
 
   private loadFromStorage() {
     try {
-      const stored = localStorage.getItem(CART_STORAGE_KEY);
+      const stored = localStorage.getItem(CART_STORAGE_KEY) || localStorage.getItem(LEGACY_CART_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         this.items = this.normalizeItems(Array.isArray(parsed) ? parsed : []);
       }
-      const storedCoupon = localStorage.getItem(COUPON_STORAGE_KEY);
+      const storedCoupon = localStorage.getItem(COUPON_STORAGE_KEY) || localStorage.getItem(LEGACY_COUPON_STORAGE_KEY);
       if (storedCoupon) {
         this.appliedCoupon = JSON.parse(storedCoupon);
       }

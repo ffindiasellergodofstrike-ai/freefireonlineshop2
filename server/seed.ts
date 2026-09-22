@@ -51,7 +51,7 @@ export async function runServerSeed() {
       console.log('Seeding initial coupons into Firebase RTDB...');
       const defaultCoupons = [
         { id: 'coup_1', code: 'SAVE10', discountPercent: 10, description: '10% off your entire order', minSpend: 0, active: true, usageCount: 0, usageLimit: 1000 },
-        { id: 'coup_2', code: 'FREEFIRE20', discountPercent: 20, description: '20% off for FreeFire community', minSpend: 500, active: true, usageCount: 0, usageLimit: 500 },
+        { id: 'coup_2', code: 'DIGITAL20', discountPercent: 20, description: '20% off for developer community', minSpend: 500, active: true, usageCount: 0, usageLimit: 500 },
         { id: 'coup_3', code: 'WELCOME100', discountPercent: 0, flatAmount: 100, description: '₹100 flat discount', minSpend: 400, active: true, usageCount: 0, usageLimit: 200 },
       ];
       for (const coup of defaultCoupons) {
@@ -64,10 +64,10 @@ export async function runServerSeed() {
     if (!existingSettings) {
       console.log('Seeding initial store settings...');
       await FirebaseRtdb.set('settings', {
-        storeName: 'FreeFireShop Digital',
-        supportEmail: 'support@freefireshop.com',
-        supportPhone: '+91 9876543210',
-        appUrl: 'https://ais-dev-idexjqz7zkbomriwtujuzx-234817242937.asia-southeast1.run.app',
+        storeName: 'FFDigital',
+        supportEmail: 'ffdigital.support@gmail.com',
+        supportPhone: '+91 9793970031',
+        appUrl: 'https://www.ffdigital.shop/',
         paymentEnvironment: 'test',
         maintenanceMode: false,
         featuredProductIds: ['linknest-pro'],

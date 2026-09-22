@@ -1126,7 +1126,7 @@ var PRODUCTS = [
       },
       {
         question: "What happens if I lose my download link?",
-        answer: "No worries! You can access all your purchased products anytime by logging into your account dashboard on FreeFireShop. Your digital library is permanently stored in your account."
+        answer: "No worries! You can access all your purchased products anytime by logging into your account dashboard on FFDigital. Your digital library is permanently stored in your account."
       },
       {
         question: "Do I need to know coding to use this template?",
@@ -1718,7 +1718,7 @@ var COUPONS = [
   {
     code: "SAVE20",
     discountPercent: 20,
-    description: "20% off any digital product on FreeFireShop"
+    description: "20% off any digital product on FFDigital"
   },
   {
     code: "LAUNCH50",
@@ -2017,7 +2017,7 @@ adminRouter.post("/uploads/direct", upload.single("image"), async (req, res) => 
     if (!file) {
       return res.status(400).json({ success: false, message: "No image file provided.", requestId });
     }
-    const bucket = process.env.FIREBASE_STORAGE_BUCKET || "freefireshop.appspot.com";
+    const bucket = process.env.FIREBASE_STORAGE_BUCKET || "ffdigital.appspot.com";
     const filename = `products/${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`;
     const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodeURIComponent(filename)}`;
     const response = await fetch(uploadUrl, {
@@ -2318,7 +2318,7 @@ async function runServerSeed() {
       console.log("Seeding initial coupons into Firebase RTDB...");
       const defaultCoupons = [
         { id: "coup_1", code: "SAVE10", discountPercent: 10, description: "10% off your entire order", minSpend: 0, active: true, usageCount: 0, usageLimit: 1e3 },
-        { id: "coup_2", code: "FREEFIRE20", discountPercent: 20, description: "20% off for FreeFire community", minSpend: 500, active: true, usageCount: 0, usageLimit: 500 },
+        { id: "coup_2", code: "FFDIGITAL20", discountPercent: 20, description: "20% off for developer community", minSpend: 500, active: true, usageCount: 0, usageLimit: 500 },
         { id: "coup_3", code: "WELCOME100", discountPercent: 0, flatAmount: 100, description: "\u20B9100 flat discount", minSpend: 400, active: true, usageCount: 0, usageLimit: 200 }
       ];
       for (const coup of defaultCoupons) {
@@ -2329,8 +2329,8 @@ async function runServerSeed() {
     if (!existingSettings) {
       console.log("Seeding initial store settings...");
       await FirebaseRtdb.set("settings", {
-        storeName: "FreeFireShop Digital",
-        supportEmail: "support@freefireshop.com",
+        storeName: "FFDigital",
+        supportEmail: "freefireshop.support@gmail.com",
         supportPhone: "+91 9876543210",
         appUrl: "https://ais-dev-idexjqz7zkbomriwtujuzx-234817242937.asia-southeast1.run.app",
         paymentEnvironment: "test",
@@ -2393,14 +2393,14 @@ async function buildInvoicePdf(order) {
     const text = toPdfText(value);
     drawText(text, right - font.widthOfTextAtSize(text, size), y2, size, font, color);
   };
-  const businessName = process.env.INVOICE_BUSINESS_NAME || "FreeFireShop";
+  const businessName = process.env.INVOICE_BUSINESS_NAME || "FFDigital";
   const supportEmail = process.env.INVOICE_SUPPORT_EMAIL || "support@yourdomain.com";
   const businessAddress = process.env.INVOICE_BUSINESS_ADDRESS || "Digital Products Store, India";
   const gstin = process.env.INVOICE_GSTIN?.trim();
   const receiptTitle = gstin ? "TAX INVOICE" : "PAYMENT RECEIPT";
   page.drawRectangle({ x: 0, y: height - 116, width, height: 116, color: purple });
   page.drawRectangle({ x: margin, y: height - 82, width: 34, height: 34, color: rgb(1, 1, 1), opacity: 0.16 });
-  drawText("FS", margin + 9, height - 71, 12, bold, rgb(1, 1, 1));
+  drawText("FF", margin + 9, height - 71, 12, bold, rgb(1, 1, 1));
   drawText(businessName, margin + 46, height - 62, 18, bold, rgb(1, 1, 1));
   drawText("DIGITAL PRODUCTS & SERVICES", margin + 46, height - 78, 7.5, bold, rgb(0.85, 0.83, 1));
   drawRight(receiptTitle, width - margin, height - 62, 15, bold, rgb(1, 1, 1));
@@ -2496,7 +2496,7 @@ function buildPurchaseEmailHtml(order, links, options = {}) {
     <div style="display:none;max-height:0;overflow:hidden;color:transparent">Payment confirmed. Your order and invoice are ready.</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f8"><tr><td align="center" style="padding:30px 12px">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 28px rgba(23,25,35,.08)">
-        <tr><td style="background:#5546c9;padding:30px 34px;color:#ffffff"><table role="presentation" width="100%"><tr><td><div style="font-size:21px;font-weight:800">FreeFireShop</div><div style="font-size:11px;color:#dcd8ff;margin-top:4px;letter-spacing:1px">DIGITAL PRODUCTS & SERVICES</div></td><td align="right"><span style="display:inline-block;background:#d9fae8;color:#087647;padding:7px 11px;border-radius:99px;font-size:11px;font-weight:800">PAYMENT CONFIRMED</span></td></tr></table></td></tr>
+        <tr><td style="background:#5546c9;padding:30px 34px;color:#ffffff"><table role="presentation" width="100%"><tr><td><div style="font-size:21px;font-weight:800">FFDigital</div><div style="font-size:11px;color:#dcd8ff;margin-top:4px;letter-spacing:1px">DIGITAL PRODUCTS & SERVICES</div></td><td align="right"><span style="display:inline-block;background:#d9fae8;color:#087647;padding:7px 11px;border-radius:99px;font-size:11px;font-weight:800">PAYMENT CONFIRMED</span></td></tr></table></td></tr>
         <tr><td style="padding:34px">
           <h1 style="font-size:25px;line-height:1.25;margin:0 0 12px;color:#171923">Your order is ready</h1>
           <p style="font-size:15px;line-height:1.65;color:#5f6372;margin:0 0 24px">Hi ${customerName}, thank you for your purchase. Your payment was successful and your digital products are ready to download.</p>

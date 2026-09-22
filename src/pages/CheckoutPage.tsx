@@ -379,7 +379,7 @@ export const CheckoutPage: React.FC = () => {
         <div className="space-y-3">
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Login Required</h1>
           <p className="text-slate-600 max-w-sm mx-auto text-sm leading-relaxed">
-            Please sign in to your FreeFireShop account or create a new one to place orders, manage billing, and access instant downloads.
+            Please sign in to your FFDigital account or create a new one to place orders, manage billing, and access instant downloads.
           </p>
         </div>
 
@@ -531,7 +531,7 @@ export const CheckoutPage: React.FC = () => {
                   className="mt-1 rounded text-blue-600 accent-blue-600 w-4 h-4 cursor-pointer shrink-0"
                 />
                 <label htmlFor="agree-terms" className="text-xs text-slate-600 leading-relaxed cursor-pointer select-none">
-                  I explicitly acknowledge and agree to the FreeFireShop{' '}
+                  I explicitly acknowledge and agree to the FFDigital{' '}
                   <button
                     type="button"
                     onClick={() => navigate('/terms')}
@@ -631,9 +631,9 @@ export const CheckoutPage: React.FC = () => {
             <div className="p-3.5 bg-blue-50/80 border border-blue-100 rounded-2xl text-[11px] text-blue-900 flex items-start gap-2.5">
               <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
               <div className="space-y-0.5">
-                <span className="font-bold block">FreeFireShop Verified Delivery Guarantee</span>
+                <span className="font-bold block">FFDigital Verified Delivery Guarantee</span>
                 <p className="text-blue-700/90 leading-relaxed">
-                  Direct digital delivery via email and dashboard. Protected by 24-48 hr resolution policy for failed top-ups or payment disputes.
+                  Direct digital download delivery via email and dashboard. Protected by 24-48 hr resolution policy for download issues or payment disputes.
                 </p>
               </div>
             </div>

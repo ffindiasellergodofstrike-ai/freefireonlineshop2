@@ -1,6 +1,6 @@
 {
-  "name": "FreeFireShop",
-  "description": "official digital products store offering downloadable files, scripts, tools, videos, and developer resources with secure digital delivery.",
+  "name": "FFDigital",
+  "description": "Premium digital products store offering website templates, React templates, SaaS scripts, e-commerce templates, source code, and digital assets.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

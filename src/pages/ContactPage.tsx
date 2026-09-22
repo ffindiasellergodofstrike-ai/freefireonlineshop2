@@ -18,7 +18,7 @@ export const ContactPage: React.FC = () => {
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [subject, setSubject] = useState('uid-topup');
+  const [subject, setSubject] = useState('delivery');
   const [orderNumber, setOrderNumber] = useState('');
   const [message, setMessage] = useState('');
   const [isSent, setIsSent] = useState(false);
@@ -30,7 +30,7 @@ export const ContactPage: React.FC = () => {
       return;
     }
     setIsSent(true);
-    showToast('success', 'Ticket Dispatched', 'We have received your support request and assigned Ticket #FFS-8842.');
+    showToast('success', 'Ticket Dispatched', 'We have received your support request and assigned Ticket #FFD-8842.');
   };
 
   return (
@@ -41,10 +41,10 @@ export const ContactPage: React.FC = () => {
           Official Customer Support & Business Coordinates
         </div>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-          Contact FreeFireShop Support
+          Contact FFDigital Support
         </h1>
         <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-          Need assistance with your digital game order, Player UID top-up, delivery status, or billing queries? Reach our verified team directly.
+          Need assistance with your digital template order, download status, or billing queries? Reach our verified team directly.
         </p>
       </div>
 
@@ -63,8 +63,8 @@ export const ContactPage: React.FC = () => {
                 <Mail className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                 <div>
                   <h4 className="font-bold text-slate-900">Official Support Email</h4>
-                  <a href="mailto:freefireshop.support@gmail.com" className="text-blue-600 font-semibold hover:underline text-xs sm:text-sm break-all">
-                    freefireshop.support@gmail.com
+                  <a href="mailto:ffdigital.support@gmail.com" className="text-blue-600 font-semibold hover:underline text-xs sm:text-sm break-all">
+                    ffdigital.support@gmail.com
                   </a>
                   <span className="text-[11px] text-blue-700 font-semibold block mt-1">
                     Response time: Within 2 to 4 hours
@@ -106,7 +106,7 @@ export const ContactPage: React.FC = () => {
             <div className="space-y-3.5 text-xs text-slate-600">
               <div className="pb-3 border-b border-slate-100 flex justify-between items-center">
                 <span className="font-medium text-slate-500">Brand Name:</span>
-                <span className="font-bold text-slate-900">FreeFireShop</span>
+                <span className="font-bold text-slate-900">FFDigital</span>
               </div>
 
               <div className="pb-3 border-b border-slate-100 flex justify-between items-center">
@@ -201,11 +201,11 @@ export const ContactPage: React.FC = () => {
                       onChange={(e) => setSubject(e.target.value)}
                       className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                     >
-                      <option value="uid-topup">Game UID & Top-Up Status</option>
-                      <option value="delivery">Digital Delivery / Redeem Code Issue</option>
+                      <option value="delivery">Digital Product Download Issue</option>
+                      <option value="templates">Template / Source Code Inquiries</option>
                       <option value="billing">Billing or Refund Request</option>
                       <option value="payment-verification">Payment Deducted but Order Pending</option>
-                      <option value="technical">Technical Support / Script Assistance</option>
+                      <option value="technical">Technical Support / Setup Assistance</option>
                       <option value="general">General Store Inquiry</option>
                     </select>
                   </div>
@@ -218,7 +218,7 @@ export const ContactPage: React.FC = () => {
                       type="text"
                       value={orderNumber}
                       onChange={(e) => setOrderNumber(e.target.value)}
-                      placeholder="e.g. FFS-2026-XXXX or UTR"
+                      placeholder="e.g. FFD-2026-XXXX or UTR"
                       className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                     />
                   </div>
@@ -231,7 +231,7 @@ export const ContactPage: React.FC = () => {
                     rows={5}
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
-                    placeholder="Provide your Game UID, transaction details, or any questions for our support team..."
+                    placeholder="Provide your Order ID, transaction details, or any questions for our support team..."
                     className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

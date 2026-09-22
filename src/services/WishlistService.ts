@@ -3,7 +3,8 @@ import { ProductService } from './ProductService';
 import { CartService } from './CartService';
 import { AuthService } from './AuthService';
 
-const WISHLIST_STORAGE_KEY = 'freefireshop_wishlist_v1';
+const WISHLIST_STORAGE_KEY = 'ffdigital_wishlist_v1';
+const LEGACY_WISHLIST_STORAGE_KEY = 'freefireshop_wishlist_v1';
 
 type WishlistListener = (items: WishlistItem[]) => void;
 
@@ -26,7 +27,7 @@ class WishlistServiceImpl {
 
   private loadFromStorage() {
     try {
-      const stored = localStorage.getItem(WISHLIST_STORAGE_KEY);
+      const stored = localStorage.getItem(WISHLIST_STORAGE_KEY) || localStorage.getItem(LEGACY_WISHLIST_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         this.items = parsed
