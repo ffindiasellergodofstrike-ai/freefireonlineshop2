@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import test from 'node:test';
 import { SecureFileManager } from './secureFiles';
 
@@ -22,7 +22,7 @@ test('rejects non-HTTPS product download URLs', async () => {
 
   try {
     await assert.rejects(
-      SecureFileManager.fetchProductFile('test-product'),
+      SecureFileManager.openProductFile('test-product'),
       /must use HTTPS/
     );
   } finally {
@@ -31,7 +31,29 @@ test('rejects non-HTTPS product download URLs', async () => {
   }
 });
 
-test('fetches a configured product URL without exposing it to the caller', async () => {
+test('recognizes complete MEGA file links but not folders or lookalike hosts', () => {
+  assert.equal(SecureFileManager.isMegaFileUrl(new URL('https://mega.nz/file/example#key')), true);
+  assert.equal(SecureFileManager.isMegaFileUrl(new URL('https://mega.nz/folder/example#key')), false);
+  assert.equal(SecureFileManager.isMegaFileUrl(new URL('https://mega.nz.evil.example/file/example#key')), false);
+});
+
+test('rejects MEGA links missing the decryption key', async () => {
+  const key = SecureFileManager.getProductDownloadEnvironmentKey('test-product');
+  const previousValue = process.env[key];
+  process.env[key] = 'https://mega.nz/file/example';
+
+  try {
+    await assert.rejects(
+      SecureFileManager.openProductFile('test-product'),
+      /complete MEGA file link/
+    );
+  } finally {
+    if (previousValue === undefined) delete process.env[key];
+    else process.env[key] = previousValue;
+  }
+});
+
+test('fetches and verifies a configured product ZIP without exposing its URL', async () => {
   const key = SecureFileManager.getProductDownloadEnvironmentKey('test-product');
   const previousValue = process.env[key];
   const originalFetch = globalThis.fetch;
@@ -45,9 +67,29 @@ test('fetches a configured product URL without exposing it to the caller', async
   };
 
   try {
-    const response = await SecureFileManager.fetchProductFile('test-product');
-    assert.equal(response.status, 200);
-    assert.deepEqual(new Uint8Array(await response.arrayBuffer()), new Uint8Array([0x50, 0x4b, 0x03, 0x04]));
+    const source = await SecureFileManager.openProductFile('test-product');
+    const chunks: Buffer[] = [];
+    for await (const chunk of source.stream) chunks.push(Buffer.from(chunk));
+    assert.deepEqual(Buffer.concat(chunks), Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousValue === undefined) delete process.env[key];
+    else process.env[key] = previousValue;
+  }
+});
+
+test('rejects an HTML response masquerading as a ZIP', async () => {
+  const key = SecureFileManager.getProductDownloadEnvironmentKey('test-product');
+  const previousValue = process.env[key];
+  const originalFetch = globalThis.fetch;
+  process.env[key] = 'https://storage.example/test-product.zip';
+  globalThis.fetch = async () => new Response('<html>not a zip</html>', { status: 200 });
+
+  try {
+    await assert.rejects(
+      SecureFileManager.openProductFile('test-product'),
+      /not a valid ZIP/
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (previousValue === undefined) delete process.env[key];
@@ -57,10 +99,6 @@ test('fetches a configured product URL without exposing it to the caller', async
 
 test('streams the upstream ZIP with protected download headers', async () => {
   const zipBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
-  const upstream = new Response(zipBytes, {
-    status: 200,
-    headers: { 'content-length': String(zipBytes.byteLength) },
-  });
   const output = new PassThrough();
   const chunks: Buffer[] = [];
   let statusCode: number | undefined;
@@ -74,7 +112,7 @@ test('streams the upstream ZIP with protected download headers', async () => {
   };
 
   SecureFileManager.streamProductFileToResponse(
-    upstream,
+    { stream: Readable.from([Buffer.from(zipBytes)]), contentLength: zipBytes.byteLength },
     'linknest-pro-package.zip',
     output as any
   );

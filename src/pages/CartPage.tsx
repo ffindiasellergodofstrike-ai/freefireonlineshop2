@@ -68,7 +68,7 @@ export const CartPage: React.FC = () => {
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Shopping Cart</h1>
           <p className="text-slate-500 text-xs sm:text-sm mt-1">
-            Review your digital downloads, choose license types, and proceed to instant checkout.
+            Review your digital products and proceed to instant checkout.
           </p>
         </div>
 
@@ -88,7 +88,7 @@ export const CartPage: React.FC = () => {
         <div className="lg:col-span-8 space-y-4">
           <div className="space-y-3">
             {cartItems.map((item) => (
-              <CartItem key={`${item.product.id}-${item.licenseType}`} item={item} />
+              <CartItem key={item.product.id} item={item} />
             ))}
           </div>
 

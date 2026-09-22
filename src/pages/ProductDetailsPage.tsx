@@ -33,7 +33,8 @@ import { WishlistButton } from '../components/WishlistButton';
 import { FAQAccordion, FAQItem } from '../components/FAQAccordion';
 import { Modal } from '../components/Modal';
 import { ProductCard } from '../components/ProductCard';
-import { LicenseType, ProductType } from '../types';
+import { ProductType } from '../types';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 
 const getTypeIcon = (type: ProductType) => {
   switch (type) {
@@ -110,6 +111,7 @@ const ProductDetailSection: React.FC<DetailSectionProps> = ({
 };
 
 export const ProductDetailsPage: React.FC = () => {
+  useProductCatalog();
   const { pathParams, navigate, addToCart } = useApp();
   const { showToast } = useToast();
 
@@ -140,11 +142,11 @@ export const ProductDetailsPage: React.FC = () => {
   const relatedProducts = ProductService.getRelatedProducts(product.id, 4);
 
   const handleAddToCart = () => {
-    addToCart(product, 'Standard', quantity);
+    addToCart(product, quantity);
   };
 
   const handleBuyNow = () => {
-    addToCart(product, 'Standard', quantity);
+    addToCart(product, quantity);
     navigate('/checkout');
   };
 
@@ -165,8 +167,8 @@ export const ProductDetailsPage: React.FC = () => {
       answer: 'Yes! Every purchase comes with access to future updates, patches, and maintenance releases for this product.',
     },
     {
-      question: 'Can I use this for client projects or commercial software?',
-      answer: 'Yes. The Standard License allows deployment for personal or single commercial client projects. An Extended License is available for unlimited client deployments or SaaS software platforms.',
+      question: 'Can I customize the purchased files for my own project?',
+      answer: 'Yes. You can customize the purchased files for your own project. The original package may not be redistributed or resold as a competing product.',
     },
     {
       question: 'What if I encounter technical issues with my files?',
@@ -297,7 +299,7 @@ export const ProductDetailsPage: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Clear product-specific license & technical documentation</span>
+                <span>Clear setup and technical documentation</span>
               </div>
             </div>
           </div>

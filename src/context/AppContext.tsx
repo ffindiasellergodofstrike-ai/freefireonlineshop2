@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { CartItem, WishlistItem, User, Coupon, Product, LicenseType } from '../types';
+import { CartItem, WishlistItem, User, Coupon, Product } from '../types';
 import { CartService } from '../services/CartService';
 import { WishlistService } from '../services/WishlistService';
 import { AuthService, RegisterPayload, ResetPasswordPayload } from '../services/AuthService';
@@ -34,9 +34,9 @@ export interface AppContextType {
   cartTotals: { subtotal: number; discount: number; tax: number; total: number };
   cartSummary: CartSummary;
   appliedCoupon: Coupon | null;
-  addToCart: (product: Product, licenseType?: 'Standard' | 'Extended', quantity?: number) => void;
-  removeFromCart: (productId: string, licenseType: 'Standard' | 'Extended') => void;
-  updateCartQuantity: (productId: string, licenseType: 'Standard' | 'Extended', quantity: number) => void;
+  addToCart: (product: Product, quantity?: number) => void;
+  removeFromCart: (productId: string) => void;
+  updateCartQuantity: (productId: string, quantity: number) => void;
   applyCoupon: (code: string) => { success: boolean; message: string; discount: number };
   removeCoupon: () => void;
   clearCart: () => void;
@@ -48,7 +48,7 @@ export interface AppContextType {
   toggleWishlist: (product: Product) => void;
   removeFromWishlist: (productId: string) => void;
   clearWishlist: () => void;
-  moveWishlistToCart: (productId: string, licenseType?: 'Standard' | 'Extended') => void;
+  moveWishlistToCart: (productId: string) => void;
   moveAllWishlistToCart: () => void;
 
   // Auth
@@ -216,7 +216,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Cart operations
-  const addToCart = (product: Product, licenseType: 'Standard' | 'Extended' = 'Standard', quantity = 1) => {
+  const addToCart = (product: Product, quantity = 1) => {
     const alreadyInCart = cartItems.some((item) => item.product.id === product.id);
     
     if (alreadyInCart) {
@@ -224,17 +224,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    CartService.addItem(product, licenseType, quantity);
-    showToast('success', 'Added to Cart', `${product.title} (${licenseType} License)`);
+    CartService.addItem(product, quantity);
+    showToast('success', 'Added to Cart', `${product.title} added to your shopping cart.`);
   };
 
-  const removeFromCart = (productId: string, licenseType: 'Standard' | 'Extended') => {
-    CartService.removeItem(productId, licenseType);
+  const removeFromCart = (productId: string) => {
+    CartService.removeItem(productId);
     showToast('info', 'Item Removed', 'Product removed from your cart.');
   };
 
-  const updateCartQuantity = (productId: string, licenseType: 'Standard' | 'Extended', quantity: number) => {
-    CartService.updateQuantity(productId, licenseType, quantity);
+  const updateCartQuantity = (productId: string, quantity: number) => {
+    CartService.updateQuantity(productId, quantity);
   };
 
   const applyCoupon = (code: string): { success: boolean; message: string; discount: number } => {
@@ -285,8 +285,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     showToast('info', 'Wishlist Cleared', 'All saved items removed.');
   };
 
-  const moveWishlistToCart = (productId: string, licenseType: 'Standard' | 'Extended' = 'Standard') => {
-    const ok = WishlistService.moveToCart(productId, licenseType);
+  const moveWishlistToCart = (productId: string) => {
+    const ok = WishlistService.moveToCart(productId);
     if (ok) {
       showToast('success', 'Moved to Cart', 'Product moved directly to your shopping cart.');
     }

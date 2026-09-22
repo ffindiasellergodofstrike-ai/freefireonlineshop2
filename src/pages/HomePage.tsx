@@ -3,10 +3,10 @@ import { ShieldCheck, Zap, RefreshCw, Lock, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SearchBar } from '../components/SearchBar';
 import { ProductCard } from '../components/ProductCard';
-import { ProductService } from '../services/ProductService';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 
 export const HomePage: React.FC = () => {
-  const products = ProductService.getAllProducts();
+  const products = useProductCatalog();
 
   return (
     <div className="space-y-12 sm:space-y-16 pb-16">

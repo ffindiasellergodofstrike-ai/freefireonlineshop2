@@ -78,7 +78,7 @@ export const ProductImage: React.FC<ProductImageProps> = ({ product, className =
           icon: Cpu,
           lang: 'Digital Product',
           codeLine1: 'Production Ready Source Code',
-          codeLine2: 'Instant Download & License Key',
+          codeLine2: 'Instant Secure Download',
           codeLine3: 'Lifetime Free Updates',
         };
     }

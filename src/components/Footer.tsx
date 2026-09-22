@@ -213,16 +213,8 @@ export const Footer: React.FC = () => {
 
           {/* Legal & Trust */}
           <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white">Policies & Licensing</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-white">Policies</h4>
             <ul className="space-y-2 text-xs">
-              <li>
-                <button
-                  onClick={() => navigate('/license')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
-                >
-                  License & Usage Policy
-                </button>
-              </li>
               <li>
                 <button
                   onClick={() => navigate('/terms')}

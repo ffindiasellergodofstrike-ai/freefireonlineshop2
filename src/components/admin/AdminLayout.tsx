@@ -37,7 +37,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
     { id: 'customers', label: 'Customers', icon: Users },
     { id: 'coupons', label: 'Coupons', icon: Tag },
-    { id: 'licenses', label: 'Licenses & Downloads', icon: FileText },
+    { id: 'downloads', label: 'Downloads & Access', icon: FileText },
     { id: 'audit', label: 'Audit Logs', icon: ShieldAlert },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

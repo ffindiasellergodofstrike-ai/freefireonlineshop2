@@ -1,7 +1,5 @@
 export type ProductType = 'DOWNLOAD' | 'VIDEO' | 'SCRIPT' | 'TOOL' | 'RESOURCE' | 'OTHER';
 
-export type LicenseType = 'Standard' | 'Extended';
-
 export type OrderStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
 export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
 export type DeliveryStatus = 'PENDING' | 'DELIVERED' | 'FAILED' | 'REVOKED';
@@ -28,7 +26,6 @@ export interface Product {
   categoryLabel: string;
   productType: ProductType;
   price: number;
-  extendedPrice?: number;
   originalPrice?: number;
   rating?: number;
   reviewCount?: number;
@@ -46,7 +43,6 @@ export interface Product {
   faqs?: ProductFaq[];
   changelog?: ProductChangelog[];
   previewUrl?: string;
-  licenseTerms?: string;
   status: 'active' | 'archived';
   tags: string[];
   isFeatured?: boolean;
@@ -73,7 +69,6 @@ export interface CartItem {
   price: number;
   quantity: number;
   addedAt: string;
-  licenseType?: LicenseType | string;
 }
 
 export interface WishlistItem {
@@ -118,7 +113,6 @@ export interface UserDownloadItem {
   version?: string;
   fileSize?: string;
   fileFormat?: string;
-  licenseType?: string;
   downloadUrl?: string;
   status: DownloadStatus;
   createdAt: string;
@@ -131,7 +125,6 @@ export interface OrderItem {
   productImage: string;
   category: string;
   productType?: ProductType;
-  licenseType?: LicenseType | string;
   price: number;
   quantity?: number;
   downloadUrl?: string;

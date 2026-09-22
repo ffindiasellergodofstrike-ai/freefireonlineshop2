@@ -74,7 +74,7 @@ export const LoginPage: React.FC = () => {
                 </div>
                 <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight truncate">Customer Sign In</h1>
                 <p className="text-blue-100 text-xs sm:text-sm mt-1 line-clamp-2">
-                  Access your digital purchases, licenses, and downloads.
+                  Access your digital purchases, receipts, and downloads.
                 </p>
               </div>
             </div>

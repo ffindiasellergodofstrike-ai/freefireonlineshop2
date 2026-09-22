@@ -136,7 +136,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             onClick={(e) => {
               e.stopPropagation();
               if (!isInCart) {
-                addToCart(product, 'Standard', 1);
+                addToCart(product, 1);
               }
               navigate('/checkout');
             }}

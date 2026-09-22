@@ -1,6 +1,6 @@
 // server/app.ts
 import express from "express";
-import crypto3 from "crypto";
+import crypto4 from "crypto";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import cors from "cors";
@@ -660,10 +660,17 @@ var AuthServiceServer = class {
         message: "This email address is already registered. Please log in instead."
       };
     }
-    const randomHex = crypto.randomBytes(4).toString("hex").toUpperCase();
-    const userId = `USER_${Date.now().toString(36).toUpperCase()}_${randomHex}`;
-    const cleanUsername = cleanEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "") || `user${cleanMobile.slice(-4)}`;
     const displayName = name && name.trim().length >= 2 ? name.trim() : cleanEmail.split("@")[0];
+    const cleanNameForId = displayName.replace(/[\s\W_]+/g, "").toLowerCase();
+    const frontFour = cleanMobile.slice(0, 4);
+    const baseUserId = `${cleanNameForId}${frontFour}`;
+    let userId = baseUserId;
+    const isCollision = await FirebaseRtdb.get(`users/${userId}`);
+    if (isCollision) {
+      const shortSuffix = crypto.randomBytes(2).toString("hex").toLowerCase();
+      userId = `${baseUserId}_${shortSuffix}`;
+    }
+    const cleanUsername = cleanEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "") || `user${cleanMobile.slice(-4)}`;
     const passwordHash = await this.hashPassword(password);
     const now = /* @__PURE__ */ new Date();
     const profile = {
@@ -865,7 +872,8 @@ var AuditLogger = class {
 
 // server/secureFiles.ts
 import crypto2 from "crypto";
-import { Readable } from "stream";
+import { Readable } from "node:stream";
+import { File as MegaFile } from "megajs";
 var downloadTokens = /* @__PURE__ */ new Map();
 var SecureFileManager = class {
   /**
@@ -926,11 +934,45 @@ var SecureFileManager = class {
     const normalizedId = productId.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
     return `PRODUCT_DOWNLOAD_URL_${normalizedId}`;
   }
+  static isMegaFileUrl(sourceUrl) {
+    return (sourceUrl.hostname === "mega.nz" || sourceUrl.hostname === "mega.co.nz") && sourceUrl.pathname.startsWith("/file/");
+  }
+  static async verifyZipStream(source) {
+    const iterator = source[Symbol.asyncIterator]();
+    const chunks = [];
+    let bytesRead = 0;
+    while (bytesRead < 4) {
+      const result = await iterator.next();
+      if (result.done) break;
+      const chunk = Buffer.isBuffer(result.value) ? result.value : Buffer.from(result.value);
+      chunks.push(chunk);
+      bytesRead += chunk.length;
+    }
+    const initialBytes = Buffer.concat(chunks);
+    const validSignature = initialBytes.length >= 4 && initialBytes[0] === 80 && initialBytes[1] === 75 && (initialBytes[2] === 3 && initialBytes[3] === 4 || initialBytes[2] === 5 && initialBytes[3] === 6 || initialBytes[2] === 7 && initialBytes[3] === 8);
+    if (!validSignature) {
+      source.destroy();
+      throw new Error("Configured download source is not a valid ZIP file.");
+    }
+    async function* replay() {
+      try {
+        yield initialBytes;
+        while (true) {
+          const result = await iterator.next();
+          if (result.done) return;
+          yield Buffer.isBuffer(result.value) ? result.value : Buffer.from(result.value);
+        }
+      } finally {
+        await iterator.return?.();
+      }
+    }
+    return Readable.from(replay());
+  }
   /**
-   * Opens a server-only object-storage URL. The URL is configured in Vercel and
-   * is never returned to the browser.
+   * Opens and verifies a server-only HTTPS ZIP source. MEGA shared-file URLs
+   * are decrypted on the server; no source URL is returned to the browser.
    */
-  static async fetchProductFile(productId) {
+  static async openProductFile(productId) {
     const environmentKey = this.getProductDownloadEnvironmentKey(productId);
     const configuredUrl = process.env[environmentKey] || process.env.PRODUCT_DOWNLOAD_URL;
     if (!configuredUrl) {
@@ -945,22 +987,51 @@ var SecureFileManager = class {
     if (sourceUrl.protocol !== "https:") {
       throw new Error(`${environmentKey} must use HTTPS.`);
     }
-    const upstream = await fetch(sourceUrl, {
-      method: "GET",
-      redirect: "follow",
-      signal: AbortSignal.timeout(3e4)
-    });
+    if (sourceUrl.hostname === "mega.nz" || sourceUrl.hostname === "mega.co.nz") {
+      if (!this.isMegaFileUrl(sourceUrl) || !sourceUrl.hash) {
+        throw new Error(`${environmentKey} must contain a complete MEGA file link, including its key.`);
+      }
+      const megaFile = MegaFile.fromURL(configuredUrl);
+      if (megaFile.directory) {
+        throw new Error(`${environmentKey} must point to a MEGA file, not a folder.`);
+      }
+      await megaFile.loadAttributes();
+      const contentLength2 = megaFile.size;
+      if (!Number.isSafeInteger(contentLength2) || contentLength2 <= 0) {
+        throw new Error("Configured MEGA file has an invalid size.");
+      }
+      return {
+        stream: await this.verifyZipStream(megaFile.download({})),
+        contentLength: contentLength2
+      };
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3e4);
+    let upstream;
+    try {
+      upstream = await fetch(sourceUrl, {
+        method: "GET",
+        redirect: "follow",
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!upstream.ok || !upstream.body) {
       throw new Error(`Configured download source returned HTTP ${upstream.status}.`);
     }
-    return upstream;
+    const contentLengthHeader = upstream.headers.get("content-length");
+    const contentLength = !upstream.headers.has("content-encoding") && contentLengthHeader && /^\d+$/.test(contentLengthHeader) ? Number(contentLengthHeader) : void 0;
+    return {
+      stream: await this.verifyZipStream(Readable.fromWeb(upstream.body)),
+      contentLength
+    };
   }
   /**
    * Proxies the configured ZIP through the authenticated API response.
    */
-  static streamProductFileToResponse(upstream, filename, res) {
+  static streamProductFileToResponse(source, filename, res) {
     const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const contentLength = upstream.headers.get("content-length");
     const headers = {
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="${safeFilename}"`,
@@ -969,22 +1040,27 @@ var SecureFileManager = class {
       "Expires": "0",
       "X-Content-Type-Options": "nosniff"
     };
-    if (contentLength && /^\d+$/.test(contentLength)) {
-      headers["Content-Length"] = contentLength;
+    if (Number.isSafeInteger(source.contentLength) && source.contentLength > 0) {
+      headers["Content-Length"] = String(source.contentLength);
     }
     res.writeHead(200, headers);
-    const source = Readable.fromWeb(upstream.body);
-    source.on("error", (error) => res.destroy(error));
-    source.pipe(res);
+    source.stream.on("error", (error) => res.destroy(error));
+    source.stream.pipe(res);
   }
 };
 
 // src/data/products.ts
+var linknestCover = "/product-images/linknest-pro.jpg";
+var neuraAiCover = "/product-images/neura-ai.png";
+var finoraCover = "/product-images/finora.png";
+var learnifyCover = "/product-images/learnify.png";
+var veloraCover = "/product-images/velora.png";
+var workhubCover = "/product-images/workhub.png";
 var PRODUCTS = [
   {
     id: "linknest-pro",
     slug: "linknest-pro",
-    title: "LinkNest Pro \u2014 Personal Bio & Digital Store Website Template",
+    title: "LinkNest Pro \u2014 Bio Link & Digital Store",
     shortDescription: "Create your own professional bio link page and showcase your digital products, social links, WhatsApp, email and payment links \u2014 all in one place.",
     description: "LinkNest Pro is a modern, responsive personal bio and digital-store website template designed for creators, freelancers, developers, influencers and small businesses.\n\nTurn one simple link into your own professional online profile where visitors can:\n\n\u{1F464} View your profile & bio\n\u{1F517} Access all your important links\n\u{1F4F1} Connect through WhatsApp\n\u{1F4E7} Contact you by email\n\u{1F310} Visit your website and social profiles\n\u{1F6CD}\uFE0F Browse your digital products\n\u{1F4B0} See product prices\n\u{1F525} Click Buy Now and continue to your payment/checkout page\n\nNo monthly subscription. No framework required. Just customize, deploy and use.",
     category: "templates",
@@ -994,9 +1070,9 @@ var PRODUCTS = [
     originalPrice: 999,
     rating: 4.9,
     reviewCount: 42,
-    image: "/images/branding/LinkNest-Pro.png",
+    image: linknestCover,
     gallery: [
-      "/images/branding/LinkNest-Pro.png"
+      linknestCover
     ],
     fileFormat: "HTML, CSS, JS (ZIP Archive)",
     fileSize: "6.7 KB",
@@ -1027,7 +1103,7 @@ var PRODUCTS = [
       "Free deployment guide",
       "Product & payment setup guide",
       "Customization guide",
-      "Commercial license template"
+      "Setup and customization guide"
     ],
     requirements: [
       "Any modern web browser (Chrome, Safari, Firefox, Edge)",
@@ -1070,6 +1146,566 @@ var PRODUCTS = [
     isNew: true,
     releasedAt: "2026-09-20",
     updatedAt: "2026-09-21"
+  },
+  {
+    id: "neura-ai",
+    slug: "neura-ai",
+    title: "NeuraAI \u2014 Premium AI SaaS Template",
+    shortDescription: "A premium, modern AI SaaS website template designed for AI startups, automation platforms, productivity tools, and next-generation software products.",
+    description: "NeuraAI \u2014 Premium AI SaaS Website is a professionally designed, modern website template built for AI startups, SaaS companies, automation platforms, AI tools, and technology products.\n\nIt combines a sophisticated visual system with clear product storytelling, feature sections, pricing layouts, integrations, testimonials, FAQs, and conversion-focused call-to-action sections.\n\nThe template is designed to help you launch a professional AI/SaaS website quickly while keeping the codebase clean, responsive, customizable, and deployment-ready.\n\nWhether you're launching an AI writing tool, automation platform, productivity application, analytics product, or another SaaS product, NeuraAI provides a strong foundation that can be customized to your brand.",
+    category: "templates",
+    categoryLabel: "Website Templates",
+    productType: "DOWNLOAD",
+    price: 750,
+    originalPrice: 1500,
+    rating: 5,
+    reviewCount: 18,
+    image: neuraAiCover,
+    gallery: [
+      neuraAiCover
+    ],
+    fileFormat: "React/Vite-ready (ZIP Archive)",
+    fileSize: "1.2 MB",
+    downloadUrl: "/downloads/neura-ai-template.zip",
+    version: "1.0.0",
+    features: [
+      "\u{1F916} AI SaaS Design: Modern interface specifically designed for AI and SaaS products.",
+      "\u{1F319} Dark Modern UI: Premium dark-first visual system with subtle gradients, borders, and modern typography.",
+      "\u26A1 SaaS Product Sections: Professionally structured sections for AI features, use cases, pricing, and integrations.",
+      "\u{1F4CA} Dashboard Preview: Realistic dashboard-style interface with analytics, AI workspace, and metrics.",
+      "\u{1F4B3} Pricing Section: Ready-made monthly/yearly pricing structure for Free, Pro, Business, and Enterprise.",
+      "\u{1F4F1} Fully Responsive: Optimized layout for desktop, laptop, tablet, and mobile browsers."
+    ],
+    whatsIncluded: [
+      "React & Vite-ready source structure",
+      "CSS/Tailwind styling layout config",
+      "Reusable premium UI components",
+      "Responsive dashboard preview mockups",
+      "Feature icons & SVG assets",
+      "Demo content and configuration",
+      "Full deployment & customization guides"
+    ],
+    requirements: [
+      "Modern desktop or laptop",
+      "Node.js 18+ and npm 9+",
+      "VS Code or another code editor",
+      "Modern web browser (Chrome, Edge, Firefox, Safari)"
+    ],
+    faqs: [
+      {
+        question: "What is NeuraAI?",
+        answer: "NeuraAI is a premium AI SaaS website template designed for AI startups, SaaS businesses, automation tools, productivity platforms, and technology products."
+      },
+      {
+        question: "Is this a complete website template?",
+        answer: "Yes. The package contains the editable website source files and required frontend assets."
+      },
+      {
+        question: "Can I change the brand name?",
+        answer: "Yes. You can replace the NeuraAI branding with your own company, product, or startup name."
+      },
+      {
+        question: "Can I change the colors and design?",
+        answer: "Yes. The styling is customizable, allowing you to modify colors, typography, spacing, content, and other visual elements."
+      },
+      {
+        question: "Is it mobile responsive?",
+        answer: "Yes. The website is designed to adapt to desktop, tablet, and mobile screen sizes."
+      },
+      {
+        question: "Can I deploy it on Vercel?",
+        answer: "Yes. The project is designed to be compatible with Vercel deployment."
+      },
+      {
+        question: "Can I use it for my SaaS business?",
+        answer: "Yes. You can customize the template for your own SaaS, AI, software, automation, or technology project. The original package may not be redistributed or resold as a competing product."
+      },
+      {
+        question: "Does it include a real AI backend?",
+        answer: "No. NeuraAI is a frontend website template. AI APIs, authentication, databases, subscriptions, and other backend services need to be connected separately if required."
+      },
+      {
+        question: "Does it include a real payment gateway?",
+        answer: "No. The template provides the frontend pricing/checkout presentation. A real payment provider must be integrated separately."
+      },
+      {
+        question: "Can I connect my own API?",
+        answer: "Yes. The frontend structure can be connected to your own API, backend, database, AI provider, authentication system, or other services."
+      },
+      {
+        question: "Do I need coding knowledge?",
+        answer: "Basic web-development knowledge is recommended for advanced customization. The included documentation can help with setup and deployment."
+      },
+      {
+        question: "Are the included images and content real?",
+        answer: "Demo content is fictional and intended for showcasing the template. Replace it with your own content and assets you have permission to use before publishing."
+      },
+      {
+        question: "Can I sell this template again?",
+        answer: "No. You may customize the purchased template for your own project, but you should not redistribute, resell, or repackage the original source files as another competing template."
+      },
+      {
+        question: "Is technical support included?",
+        answer: "Product-specific support can be provided according to the support terms listed on the product page."
+      },
+      {
+        question: "Is a refund available?",
+        answer: "Digital-product refund eligibility is subject to the store's published Refund & Cancellation Policy and applicable payment-provider/legal requirements."
+      }
+    ],
+    status: "active",
+    tags: ["AI SaaS", "Website Template", "React", "Tailwind CSS", "Dark Mode", "Product Dashboard", "SaaS Landing Page"],
+    isFeatured: true,
+    isNew: true,
+    releasedAt: "2026-09-22",
+    updatedAt: "2026-09-22"
+  },
+  {
+    id: "finora",
+    slug: "finora",
+    title: "Finora \u2014 Premium Fintech Template",
+    shortDescription: "Build a professional fintech presence with Finora \u2014 a modern responsive website template for digital banking, payments, investment platforms, financial SaaS, wallets and finance applications.",
+    description: "Finora is a professional fintech website template created for modern financial technology businesses that need a trustworthy, premium, and conversion-focused online presence.\n\nThe design combines a clean financial interface with modern dashboards, analytics, payment-focused sections, investment visuals, pricing layouts, feature showcases, and responsive components.\n\nWhether you are launching a fintech startup, digital banking platform, digital wallet, or a financial SaaS, Finora provides a high-quality frontend starting point that saves dozens of hours of design and development time.",
+    category: "templates",
+    categoryLabel: "Website Templates",
+    productType: "DOWNLOAD",
+    price: 1100,
+    originalPrice: 1999,
+    rating: 4.9,
+    reviewCount: 34,
+    image: finoraCover,
+    gallery: [
+      finoraCover
+    ],
+    fileFormat: "React/Vite-ready (ZIP Archive)",
+    fileSize: "1.4 MB",
+    downloadUrl: "/downloads/finora-template.zip",
+    version: "1.0.0",
+    features: [
+      "\u{1F4B3} Fintech-Focused Design: Designed specifically around modern financial technology products and services.",
+      "\u{1F4CA} Financial Dashboard: Professional dashboard layouts for displaying balances, transactions, and account activity.",
+      "\u{1F4C8} Analytics & Charts: Visual sections suitable for financial analytics, trends, and business metrics.",
+      "\u{1F4B0} Payment UI: Modern interfaces for presenting transfers, payments, balances, and payment-related workflows.",
+      "\u{1F510} Authentication Pages: Ready-made professional screens for Login and Sign Up screens.",
+      "\u{1F4F1} Fully Responsive: Mobile-first optimized layouts for desktop, tablet, and mobile browsers.",
+      "\u{1F319} Dark & Light Mode: Premium visual modes to match different user preferences."
+    ],
+    whatsIncluded: [
+      "Complete React & Vite website structure",
+      "JavaScript responsive source files",
+      "Sleek Tailwind & CSS theme config",
+      "Reusable premium UI components",
+      "Pricing layout sections for subscription SaaS",
+      "FAQ, Testimonials, and Contact form layouts",
+      "Custom Fintech SVG icons and illustration elements",
+      "Detailed customization & deployment guidance"
+    ],
+    requirements: [
+      "Modern Windows, macOS, or Linux computer",
+      "Node.js 18+ and npm 9+",
+      "Git installed (recommended)",
+      "VS Code or another modern text editor",
+      "Modern web browser (Chrome, Edge, Firefox, Safari)"
+    ],
+    faqs: [
+      {
+        question: "What is Finora?",
+        answer: "Finora is a premium fintech website template designed for financial technology startups, digital banking products, payment platforms, investment applications, and financial SaaS businesses."
+      },
+      {
+        question: "Is Finora a complete banking application?",
+        answer: "No. Finora is a frontend website/template. Banking APIs, payment processing, authentication infrastructure, KYC, financial data providers, and backend services must be integrated separately."
+      },
+      {
+        question: "Can I customize the brand name?",
+        answer: "Yes. You can replace the Finora branding, logo, colors, text, images, pricing and other content with your own brand."
+      },
+      {
+        question: "Can I connect my own API?",
+        answer: "Yes. The frontend structure can be connected to your own backend APIs, payment services, financial-data providers, authentication system, or database."
+      },
+      {
+        question: "Is payment processing included?",
+        answer: "No. The template provides payment/transaction-related UI. A real payment gateway or financial API must be integrated separately."
+      },
+      {
+        question: "Is it responsive?",
+        answer: "Yes. The design is intended to work across desktop, tablet and mobile screen sizes."
+      },
+      {
+        question: "Can I deploy it on Vercel?",
+        answer: "Yes. The project can be configured and deployed through a standard GitHub + Vercel workflow."
+      },
+      {
+        question: "Can I use Finora for a fintech SaaS?",
+        answer: "Yes. The UI can be customized for fintech SaaS, payment platforms, finance management tools, investment products and similar applications."
+      },
+      {
+        question: "Does Finora include a real financial backend?",
+        answer: "No. It is a website template. Real financial operations require your own secure backend and appropriate third-party services."
+      },
+      {
+        question: "Can I change the colors and layout?",
+        answer: "Yes. The components, styling and visual system can be customized according to your brand."
+      },
+      {
+        question: "Is the financial data real?",
+        answer: "No. Any financial figures or transaction information included in the template are demonstration content only."
+      },
+      {
+        question: "Can I resell the template?",
+        answer: "The source package may be customized for your own project, but it should not be redistributed or resold as a competing template."
+      }
+    ],
+    status: "active",
+    tags: ["Fintech", "Fintech SaaS", "Digital Banking", "Payment Gateway", "Landing Page", "React Template", "Tailwind CSS"],
+    isFeatured: true,
+    isNew: true,
+    releasedAt: "2026-09-22",
+    updatedAt: "2026-09-22"
+  },
+  {
+    id: "learnify",
+    slug: "learnify",
+    title: "Learnify \u2014 Premium LMS Template",
+    shortDescription: "Build a professional e-learning experience with Learnify \u2014 a modern responsive website template for online courses, instructors, academies, coaching businesses and digital education platforms.",
+    description: "Learnify is a premium online education and Learning Management System (LMS) website template designed to create a professional learning experience for students, instructors, and education businesses.\n\nThe template provides a complete visual foundation for showcasing courses, instructors, learning paths, student progress, lessons, quizzes, certificates, pricing plans, and educational content.\n\nWhether you are launching an online academy, code camp, corporate training portal, or a coaching website, Learnify gives you a clean modern starting point with modular, reusable layouts.",
+    category: "templates",
+    categoryLabel: "Website Templates",
+    productType: "DOWNLOAD",
+    price: 1400,
+    originalPrice: 2499,
+    rating: 4.9,
+    reviewCount: 26,
+    image: learnifyCover,
+    gallery: [
+      learnifyCover
+    ],
+    fileFormat: "React/Vite-ready (ZIP Archive)",
+    fileSize: "1.6 MB",
+    downloadUrl: "/downloads/learnify-template.zip",
+    version: "1.0.0",
+    features: [
+      "\u{1F393} Complete E-Learning Design: A professional education-focused interface designed around online courses.",
+      "\u{1F4DA} Course Catalog: Showcase courses with categories, instructors, ratings, pricing, and difficulty levels.",
+      "\u{1F50E} Course Search & Filters: Allow students to discover courses using real-time search and category filtering.",
+      "\u{1F468}\u200D\u{1F3EB} Instructor Profiles: Dedicated instructor layouts for displaying biography, expertise, courses, and rating metrics.",
+      "\u{1F4CA} Student Dashboard: A clean dashboard concept for displaying enrolled courses, recently accessed lessons, and progress indicators.",
+      "\u{1F4DD} Lessons & Curriculum Layouts: Dedicated templates for video lessons, curriculum modules, and interactive learning materials.",
+      "\u{1F3C6} Quiz & Certificate UI: Built-in layout blocks for rendering course assessments and completion certificates."
+    ],
+    whatsIncluded: [
+      "Complete React & Vite educational structure",
+      "JavaScript responsive source components",
+      "Sleek Tailwind & CSS course interface configurations",
+      "Modular student and instructor dashboards",
+      "Quiz/assessment and certificate interfaces",
+      "Interactive course categorization templates",
+      "Course wishlist and bookmark layouts",
+      "Detailed customization & Vercel deployment guides"
+    ],
+    requirements: [
+      "Windows, macOS, or Linux computer",
+      "Node.js 18+ and npm 9+",
+      "Git installed (recommended)",
+      "VS Code or another modern code editor",
+      "Modern web browser (Chrome, Edge, Firefox, Safari)"
+    ],
+    faqs: [
+      {
+        question: "What is Learnify?",
+        answer: "Learnify is a premium online course and e-learning website template designed for educators, instructors, academies, training companies and LMS businesses."
+      },
+      {
+        question: "Is Learnify a complete LMS?",
+        answer: "No. Learnify is primarily a frontend website/template. A production LMS backend, database, authentication, video hosting and course-management system need to be integrated separately."
+      },
+      {
+        question: "Can I sell courses using Learnify?",
+        answer: "Yes. The UI can be customized for paid courses, subscriptions, memberships or other education business models. Real payment functionality requires integration with your preferred payment gateway."
+      },
+      {
+        question: "Does it include real course videos?",
+        answer: "No. Demo course content is placeholder content. You can connect your own video hosting or learning-content system."
+      },
+      {
+        question: "Can I connect my own backend?",
+        answer: "Yes. The frontend can be connected to your own API, database, authentication system and LMS backend."
+      },
+      {
+        question: "Can I customize the branding?",
+        answer: "Yes. You can change the logo, brand name, colors, typography, images, course information and other content."
+      },
+      {
+        question: "Is Learnify mobile responsive?",
+        answer: "Yes. The interface is designed for desktop, tablet and mobile screen sizes."
+      },
+      {
+        question: "Can I deploy Learnify on Vercel?",
+        answer: "Yes. The project can be configured for deployment through GitHub and Vercel."
+      },
+      {
+        question: "Does Learnify include authentication?",
+        answer: "It includes authentication UI screens such as Login and Registration. Real authentication functionality requires backend/API integration."
+      },
+      {
+        question: "Does it include a payment gateway?",
+        answer: "No. Payment-related UI can be included, but real payment processing must be connected separately."
+      },
+      {
+        question: "Can I use it for a coaching website?",
+        answer: "Yes. Learnify can be adapted for coaching programs, training businesses, workshops, academies and instructor-led education platforms."
+      },
+      {
+        question: "Can I use it for a school or university?",
+        answer: "Yes. The UI can be customized for schools, universities, training centers and educational institutions."
+      },
+      {
+        question: "Can I change the courses and instructors?",
+        answer: "Yes. All demo course and instructor information should be replaced with your own content."
+      },
+      {
+        question: "Can I resell the source code?",
+        answer: "The source may be customized for your own project, but it should not be redistributed or resold as a competing template."
+      }
+    ],
+    status: "active",
+    tags: ["LMS", "E-learning", "Online Course", "Website Template", "React", "Tailwind CSS", "Education Portal", "Course Dashboard"],
+    isFeatured: true,
+    isNew: true,
+    releasedAt: "2026-09-22",
+    updatedAt: "2026-09-22"
+  },
+  {
+    id: "velora",
+    slug: "velora",
+    title: "Velora \u2014 Complete E-Commerce Template",
+    shortDescription: "Build a premium online shopping experience with Velora \u2014 a complete responsive e-commerce frontend for fashion, electronics, beauty, lifestyle, accessories and modern retail brands.",
+    description: "Velora is a premium complete e-commerce frontend template designed to provide a polished, high-end online shopping experience.\n\nInstead of being just a simple e-commerce landing page, Velora includes the complete customer-facing shopping journey \u2014 from discovering products and browsing categories to product details, wishlist, cart, checkout, account management and order tracking.\n\nIts modern visual system combines premium typography, spacious layouts, product-focused imagery, smooth interactions, responsive components and a conversion-focused shopping experience.",
+    category: "templates",
+    categoryLabel: "Website Templates",
+    productType: "DOWNLOAD",
+    price: 5500,
+    originalPrice: 9999,
+    rating: 5,
+    reviewCount: 42,
+    image: veloraCover,
+    gallery: [
+      veloraCover
+    ],
+    fileFormat: "React/Vite-ready (ZIP Archive)",
+    fileSize: "2.1 MB",
+    downloadUrl: "/downloads/velora-template.zip",
+    version: "1.0.0",
+    features: [
+      "\u{1F6CD}\uFE0F Complete Shopping Experience: A complete frontend shopping flow from product discovery to checkout and order confirmation.",
+      "\u{1F6D2} Product Catalog: Professional product grid with image sliders, discount pricing, wishlist toggles, and Quick View triggers.",
+      "\u{1F50E} Search, Filtering & Sorting: Advanced sidebar search, sorting metrics, and filter options by price, rating, brand, and size.",
+      "\u{1F455} Product Variants: Full UI options for colors, sizes, variant styles, and custom product quantities.",
+      "\u{1F6D2} Drawer Mini Cart & Checkout: Fully designed mini cart drawer with complete order summary and responsive checkout fields.",
+      "\u{1F464} Customer Account Pages: Account dashboard detailing customer profile, order history, addresses, and order tracking timeline.",
+      "\u{1F4F1} Fully Responsive: Optimized design for desktop, laptop, tablet, and mobile shopping devices."
+    ],
+    whatsIncluded: [
+      "Complete React & Vite storefront structure",
+      "JavaScript responsive source components",
+      "Premium CSS & Tailwind styling settings",
+      "Curated mockup product datasets & assets",
+      "Fully designed cart, checkout, and wishlist states",
+      "Customer order tracking visual components",
+      "Authentication UI (Login, Signup, Forgot password)",
+      "Detailed installation, Vercel setup, and customization guides"
+    ],
+    requirements: [
+      "Windows, macOS, or Linux computer",
+      "Node.js 18+ and npm 9+",
+      "Git installed (recommended)",
+      "VS Code or another modern text editor",
+      "Modern web browser (Chrome, Edge, Firefox, Safari)"
+    ],
+    faqs: [
+      {
+        question: "What is Velora?",
+        answer: "Velora is a premium complete e-commerce frontend template designed for modern online stores and retail brands."
+      },
+      {
+        question: "Is Velora a complete e-commerce backend?",
+        answer: "No. Velora provides the frontend shopping experience. Backend services such as databases, authentication, inventory, order processing and payment processing need to be integrated separately."
+      },
+      {
+        question: "Can I use Velora for my clothing store?",
+        answer: "Yes. Velora is suitable for clothing, fashion, footwear, accessories and other retail businesses."
+      },
+      {
+        question: "Can I use it for electronics?",
+        answer: "Yes. The product catalog and product-detail structure can be customized for electronics and technology products."
+      },
+      {
+        question: "Does it include a payment gateway?",
+        answer: "No. The checkout contains payment-related UI. A real payment gateway must be connected separately."
+      },
+      {
+        question: "Does it include real authentication?",
+        answer: "The package includes authentication UI screens. Real user authentication requires a backend or authentication service."
+      },
+      {
+        question: "Can I connect Firebase or my own API?",
+        answer: "Yes. The frontend structure can be connected to Firebase, REST APIs, GraphQL APIs or another backend system."
+      },
+      {
+        question: "Does it include an admin panel?",
+        answer: "The standard Velora package focuses on the customer-facing e-commerce store. An admin dashboard can be developed separately or added as an extended version."
+      },
+      {
+        question: "Can I change the products?",
+        answer: "Yes. Demo products, images, prices, categories, descriptions and other content can be replaced with your own products."
+      },
+      {
+        question: "Can I change the branding?",
+        answer: "Yes. You can customize the logo, colors, typography, content, images and overall visual identity."
+      },
+      {
+        question: "Is Velora mobile responsive?",
+        answer: "Yes. The design is optimized for mobile, tablet and desktop shopping experiences."
+      },
+      {
+        question: "Can I deploy it on Vercel?",
+        answer: "Yes. Velora is structured for a standard GitHub + Vercel deployment workflow."
+      },
+      {
+        question: "Can I connect a real payment system?",
+        answer: "Yes. The checkout frontend can be connected to a compatible payment gateway through a secure backend integration."
+      },
+      {
+        question: "Can I connect a real inventory system?",
+        answer: "Yes. Product and inventory data can be connected through your own backend/API."
+      },
+      {
+        question: "Are the products and prices real?",
+        answer: "No. Demo products, prices, customer information and order data are placeholder content intended to demonstrate the template."
+      },
+      {
+        question: "Can I resell the template?",
+        answer: "The source code may be customized for your own project, but it should not be redistributed or sold as a competing template."
+      }
+    ],
+    status: "active",
+    tags: ["E-Commerce", "Shopping Cart", "Store Template", "React Template", "Tailwind CSS", "Checkout UI", "Product Catalog", "D2C Store"],
+    isFeatured: true,
+    isNew: true,
+    releasedAt: "2026-09-22",
+    updatedAt: "2026-09-22"
+  },
+  {
+    id: "workhub",
+    slug: "workhub",
+    title: "WorkHub \u2014 Freelancer Marketplace Template",
+    shortDescription: "Build a complete Fiverr-style freelance marketplace with WorkHub \u2014 a premium React frontend template featuring buyer accounts, seller profiles, service listings, packages, orders, messaging, reviews, analytics, earnings and admin dashboard.",
+    description: "WorkHub is a premium freelancer marketplace website template designed for businesses that want to build their own online freelance platform.\n\nThe template provides a complete marketplace experience where users can register as buyers, sellers, or both. Buyers can discover freelancers and services, compare packages, place orders, communicate with sellers and manage their projects. Sellers can create professional profiles, publish services, manage orders, communicate with clients and monitor their earnings and performance.\n\nWorkHub includes the complete frontend experience for a modern freelance marketplace, from user registration and service discovery to checkout, order management, messaging, reviews, seller analytics and platform administration.",
+    category: "templates",
+    categoryLabel: "Website Templates",
+    productType: "DOWNLOAD",
+    price: 7500,
+    originalPrice: 19999,
+    rating: 4.9,
+    reviewCount: 15,
+    image: workhubCover,
+    gallery: [
+      workhubCover
+    ],
+    fileFormat: "React/Vite-ready (ZIP Archive)",
+    fileSize: "3.4 MB",
+    downloadUrl: "/downloads/workhub-template.zip",
+    version: "1.0.0",
+    features: [
+      "\u{1F464} Dual Buyer & Seller accounts: Smooth seller onboarding with profile bio, custom skills, languages, education and certs.",
+      "\u{1F6CD}\uFE0F Professional Gig & Service Market: Categorized service explorer with basic, standard, and premium package comparison tables.",
+      "\u{1F4AC} Multi-mode Instant Chat UI: Elegant messaging layout for buyer-seller discussion with chat list, status cues and order linkages.",
+      "\u{1F4E6} Complete Order Workflow: Order lifecycle showing order timelines, active milestones, revision requests, and completion cues.",
+      "\u{1F4C8} Advanced Seller Analytics: Insight dashboards demonstrating clicks, conversions, gig impressions, and earnings charts.",
+      "\u{1F6E0}\uFE0F Full Platform Admin Panel: Complete backend-ready frontend management console for platform metrics, users, services, orders, and reports."
+    ],
+    whatsIncluded: [
+      "Complete React & Vite marketplace structure",
+      "JavaScript fully responsive source pages",
+      "Highly flexible Tailwind CSS UI styles",
+      "Interactive buyer dashboard pages",
+      "Comprehensive seller dashboard and stats consoles",
+      "Advanced platform admin management UI console",
+      "Mock marketplace service datasets & assets",
+      "Comprehensive step-by-step launch & deployment guides"
+    ],
+    requirements: [
+      "Windows, macOS, or Linux computer",
+      "Node.js 18+ and npm 9+",
+      "Git installed (recommended)",
+      "VS Code or another modern text editor",
+      "Modern web browser (Chrome, Edge, Firefox, Safari)"
+    ],
+    faqs: [
+      {
+        question: "Is this a complete Fiverr clone?",
+        answer: "No. WorkHub is an original freelancer marketplace frontend template inspired by common marketplace workflows."
+      },
+      {
+        question: "Does it include real authentication?",
+        answer: "No. Authentication UI and demo account flows are included. A real authentication backend must be connected."
+      },
+      {
+        question: "Does it include real payment gateway integration?",
+        answer: "No. Checkout and payment screens are frontend/demo UI only."
+      },
+      {
+        question: "Can users become sellers?",
+        answer: "Yes. The template includes seller onboarding and seller profile creation flows."
+      },
+      {
+        question: "Can sellers create services?",
+        answer: "Yes. Sellers can create Basic, Standard and Premium service packages through the frontend UI."
+      },
+      {
+        question: "Is real-time chat included?",
+        answer: "No. The complete chat interface is included, but a real-time messaging backend is required."
+      },
+      {
+        question: "Is an admin panel included?",
+        answer: "Yes. WorkHub includes a complete admin dashboard frontend."
+      },
+      {
+        question: "Can I connect Firebase or another backend?",
+        answer: "Yes. The frontend is structured so you can connect your own API, database and authentication system."
+      },
+      {
+        question: "Is it mobile responsive?",
+        answer: "Yes. The marketplace, dashboards, service pages, checkout and messaging interfaces are designed for desktop, tablet and mobile."
+      },
+      {
+        question: "Can I deploy it on Vercel?",
+        answer: "Yes. WorkHub is designed to be GitHub and Vercel compatible."
+      },
+      {
+        question: "Are the users and services real?",
+        answer: "No. Demo users, sellers, services and orders are fictional sample data."
+      },
+      {
+        question: "Are seller payouts real?",
+        answer: "No. Earnings and withdrawal pages are frontend UI demonstrations."
+      },
+      {
+        question: "Can I customize the branding?",
+        answer: "Yes. You can change the logo, colors, typography, categories, services, content and branding."
+      },
+      {
+        question: "Is technical support included?",
+        answer: "Basic setup/customization documentation is included. Backend development and custom integrations are not included unless separately provided."
+      }
+    ],
+    status: "active",
+    tags: ["Freelancer", "Marketplace", "Fiverr Clone", "SaaS platform", "React Template", "Tailwind CSS", "Seller Dashboard", "Buyer Dashboard"],
+    isFeatured: true,
+    isNew: true,
+    releasedAt: "2026-09-22",
+    updatedAt: "2026-09-22"
   }
 ];
 var COUPONS = [
@@ -1124,7 +1760,6 @@ var productSchema = z.object({
   isFeatured: z.boolean().optional(),
   stock: z.number().int().nonnegative().optional(),
   unlimitedStock: z.boolean().optional(),
-  licenseTypes: z.array(z.any()).optional(),
   features: z.array(z.string()).optional(),
   requirements: z.array(z.string()).optional(),
   faqs: z.array(z.any()).optional()
@@ -1538,27 +2173,95 @@ adminRouter.get("/export/customers", async (req, res) => {
   }
 });
 
+// server/productCatalog.ts
+var HIDDEN_PRODUCT_STATUSES = /* @__PURE__ */ new Set(["archived", "draft", "inactive"]);
+function isBrowserSafeAssetUrl(value) {
+  if (typeof value !== "string" || value.trim() === "") return false;
+  const url = value.trim();
+  return url.startsWith("/") && !url.startsWith("//") || /^https:\/\//i.test(url);
+}
+function normalizeGallery(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isBrowserSafeAssetUrl);
+}
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item) => typeof item === "string" && item.trim() !== "");
+}
+function normalizeProductAssets(product, fallback) {
+  const safeImage = isBrowserSafeAssetUrl(product?.image) ? product.image.trim() : isBrowserSafeAssetUrl(fallback?.image) ? fallback.image.trim() : "";
+  const productGallery = normalizeGallery(product?.gallery);
+  const fallbackGallery = normalizeGallery(fallback?.gallery);
+  const normalized = {
+    ...product,
+    title: typeof product?.title === "string" && product.title.trim() ? product.title.trim() : String(product?.id || "Untitled Product"),
+    slug: typeof product?.slug === "string" && product.slug ? product.slug : product?.id,
+    shortDescription: typeof product?.shortDescription === "string" ? product.shortDescription : "",
+    description: typeof product?.description === "string" ? product.description : "",
+    category: typeof product?.category === "string" && product.category ? product.category : "other",
+    categoryLabel: typeof product?.categoryLabel === "string" && product.categoryLabel ? product.categoryLabel : product?.category || "Digital Product",
+    productType: typeof product?.productType === "string" && product.productType ? product.productType : "DOWNLOAD",
+    price: Number.isFinite(Number(product?.price)) ? Number(product.price) : Number(fallback?.price || 0),
+    image: safeImage,
+    gallery: productGallery.length > 0 ? productGallery : fallbackGallery,
+    tags: normalizeStringArray(product?.tags),
+    features: normalizeStringArray(product?.features),
+    requirements: normalizeStringArray(product?.requirements),
+    whatsIncluded: normalizeStringArray(product?.whatsIncluded),
+    faqs: Array.isArray(product?.faqs) ? product.faqs : []
+  };
+  delete normalized.licenseTypes;
+  delete normalized.licenseTerms;
+  delete normalized.extendedPrice;
+  return normalized;
+}
+function mergeProductCatalog(staticProducts, databaseProducts) {
+  const catalog = /* @__PURE__ */ new Map();
+  for (const product of staticProducts || []) {
+    if (!product?.id || typeof product.id !== "string") continue;
+    catalog.set(product.id, normalizeProductAssets(product));
+  }
+  for (const databaseProduct of databaseProducts || []) {
+    if (!databaseProduct?.id || typeof databaseProduct.id !== "string") continue;
+    const staticProduct = catalog.get(databaseProduct.id);
+    const merged = staticProduct ? { ...staticProduct, ...databaseProduct } : { ...databaseProduct };
+    catalog.set(databaseProduct.id, normalizeProductAssets(merged, staticProduct));
+  }
+  return Array.from(catalog.values()).filter((product) => {
+    const status = String(product.status || "active").toLowerCase();
+    return !HIDDEN_PRODUCT_STATUSES.has(status);
+  });
+}
+
 // server/seed.ts
 async function runServerSeed() {
   try {
     const existingProducts = await FirebaseRtdb.get("products");
-    if (!existingProducts || Object.keys(existingProducts).length === 0) {
-      console.log("Seeding initial products into Firebase RTDB...");
-      for (const p of PRODUCTS) {
-        const prod = p;
+    const existingProductList = existingProducts ? Array.isArray(existingProducts) ? existingProducts : Object.values(existingProducts) : [];
+    const existingById = new Map(
+      existingProductList.filter((product) => product?.id).map((product) => [product.id, product])
+    );
+    for (const p of PRODUCTS) {
+      const prod = normalizeProductAssets(p);
+      const existing = existingById.get(prod.id);
+      if (!existing) {
         const productRecord = {
           ...prod,
           createdAt: prod.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
           updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
           status: "published",
           stock: prod.stock !== void 0 ? prod.stock : 999,
-          unlimitedStock: true,
-          licenseTypes: prod.licenseTypes || prod.licenseTerms || [
-            { id: "standard", name: "Standard License", price: prod.price },
-            { id: "extended", name: "Extended Commercial", price: prod.price * 2 }
-          ]
+          unlimitedStock: true
         };
         await FirebaseRtdb.set(`products/${prod.id}`, productRecord);
+        continue;
+      }
+      const hasUnsafeImage = !isBrowserSafeAssetUrl(existing.image);
+      const hasUnsafeGallery = !Array.isArray(existing.gallery) || existing.gallery.length === 0 || existing.gallery.some((item) => !isBrowserSafeAssetUrl(item));
+      const hasLegacyLicenseFields = "licenseTypes" in existing || "licenseTerms" in existing || "extendedPrice" in existing;
+      if (hasUnsafeImage || hasUnsafeGallery || hasLegacyLicenseFields) {
+        const repaired = normalizeProductAssets(existing, prod);
+        await FirebaseRtdb.set(`products/${prod.id}`, repaired);
       }
     }
     const existingCoupons = await FirebaseRtdb.get("coupons");
@@ -1605,6 +2308,226 @@ async function runServerSeed() {
   }
 }
 
+// server/purchaseEmail.ts
+import crypto3 from "crypto";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { Resend } from "resend";
+var getAppUrl = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
+var escapeHtml = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+var toPdfText = (value) => String(value ?? "").normalize("NFKD").replace(/[^\x20-\x7E]/g, "?");
+var money = (value) => `INR ${Number(value || 0).toFixed(2)}`;
+var createEmailDownloadToken = () => crypto3.randomBytes(32).toString("base64url");
+var hashEmailDownloadToken = (token) => crypto3.createHash("sha256").update(token).digest("hex");
+var getPurchaseEmailLinkTtlMs = () => {
+  const configuredHours = Number(process.env.PURCHASE_EMAIL_LINK_TTL_HOURS || 168);
+  const safeHours = Number.isFinite(configuredHours) ? Math.min(720, Math.max(1, configuredHours)) : 168;
+  return safeHours * 60 * 60 * 1e3;
+};
+var buildEmailDownloadUrl = (token) => `${getAppUrl()}/api/downloads/email?token=${encodeURIComponent(token)}`;
+var buildInvoiceDownloadUrl = (token) => `${getAppUrl()}/api/invoices/email?token=${encodeURIComponent(token)}`;
+async function buildInvoicePdf(order) {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([595.28, 841.89]);
+  const regular = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const width = page.getWidth();
+  const height = page.getHeight();
+  const margin = 42;
+  const ink = rgb(0.09, 0.11, 0.17);
+  const muted = rgb(0.39, 0.42, 0.5);
+  const line = rgb(0.88, 0.89, 0.93);
+  const purple = rgb(0.31, 0.25, 0.74);
+  const purpleLight = rgb(0.96, 0.95, 1);
+  const green = rgb(0.02, 0.55, 0.34);
+  const drawText = (value, x, y2, size = 9, font = regular, color = ink) => page.drawText(toPdfText(value), { x, y: y2, size, font, color });
+  const drawRight = (value, right, y2, size = 9, font = regular, color = ink) => {
+    const text = toPdfText(value);
+    drawText(text, right - font.widthOfTextAtSize(text, size), y2, size, font, color);
+  };
+  const businessName = process.env.INVOICE_BUSINESS_NAME || "FreeFireShop";
+  const supportEmail = process.env.INVOICE_SUPPORT_EMAIL || "support@yourdomain.com";
+  const businessAddress = process.env.INVOICE_BUSINESS_ADDRESS || "Digital Products Store, India";
+  const gstin = process.env.INVOICE_GSTIN?.trim();
+  const receiptTitle = gstin ? "TAX INVOICE" : "PAYMENT RECEIPT";
+  page.drawRectangle({ x: 0, y: height - 116, width, height: 116, color: purple });
+  page.drawRectangle({ x: margin, y: height - 82, width: 34, height: 34, color: rgb(1, 1, 1), opacity: 0.16 });
+  drawText("FS", margin + 9, height - 71, 12, bold, rgb(1, 1, 1));
+  drawText(businessName, margin + 46, height - 62, 18, bold, rgb(1, 1, 1));
+  drawText("DIGITAL PRODUCTS & SERVICES", margin + 46, height - 78, 7.5, bold, rgb(0.85, 0.83, 1));
+  drawRight(receiptTitle, width - margin, height - 62, 15, bold, rgb(1, 1, 1));
+  drawRight("PAID", width - margin, height - 84, 9, bold, rgb(0.77, 1, 0.88));
+  let y = height - 148;
+  const orderNumber = order.orderNumber || order.id || "N/A";
+  const orderDate = order.updatedAt || order.createdAt || (/* @__PURE__ */ new Date()).toISOString();
+  const formattedDate = new Date(orderDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  page.drawRectangle({ x: margin, y: y - 84, width: 244, height: 92, color: rgb(0.98, 0.98, 0.99), borderColor: line, borderWidth: 1 });
+  drawText("BILLED TO", margin + 14, y - 12, 8, bold, purple);
+  drawText(order.customer?.fullName || order.customerName || "Customer", margin + 14, y - 31, 11, bold);
+  drawText(order.customer?.email || order.customerEmail || "", margin + 14, y - 48, 8.5, regular, muted);
+  drawText(order.customer?.phone || order.customer?.country || "India", margin + 14, y - 64, 8.5, regular, muted);
+  const orderCardX = width - margin - 244;
+  page.drawRectangle({ x: orderCardX, y: y - 84, width: 244, height: 92, color: purpleLight, borderColor: rgb(0.86, 0.84, 0.98), borderWidth: 1 });
+  drawText("ORDER DETAILS", orderCardX + 14, y - 12, 8, bold, purple);
+  drawText("Order ID", orderCardX + 14, y - 31, 8, regular, muted);
+  drawRight(orderNumber, orderCardX + 230, y - 31, 8.5, bold);
+  drawText("Date", orderCardX + 14, y - 48, 8, regular, muted);
+  drawRight(formattedDate.slice(0, 22), orderCardX + 230, y - 48, 8, regular);
+  drawText("Transaction", orderCardX + 14, y - 65, 8, regular, muted);
+  drawRight(String(order.transactionId || order.paymentId || "N/A").slice(0, 24), orderCardX + 230, y - 65, 8, regular);
+  y -= 120;
+  page.drawRectangle({ x: margin, y: y - 8, width: width - margin * 2, height: 29, color: ink });
+  drawText("ITEM DESCRIPTION", margin + 12, y + 2, 8, bold, rgb(1, 1, 1));
+  drawText("QTY", 348, y + 2, 8, bold, rgb(1, 1, 1));
+  drawText("UNIT PRICE", 392, y + 2, 8, bold, rgb(1, 1, 1));
+  drawText("AMOUNT", 493, y + 2, 8, bold, rgb(1, 1, 1));
+  y -= 31;
+  for (const item of order.items || []) {
+    const title = toPdfText(item.productTitle || item.title || item.productId || "Digital Product").slice(0, 45);
+    const quantity = Number(item.quantity || 1);
+    const unitPrice = Number(item.price || 0);
+    const amount = unitPrice * quantity;
+    drawText(title, margin + 12, y, 9.5, bold);
+    drawText(`ID: ${String(item.productId || "digital-product").slice(0, 36)}`, margin + 12, y - 14, 7.5, regular, muted);
+    drawText(String(quantity), 353, y - 2, 9, regular);
+    drawRight(money(unitPrice), 468, y - 2, 8.5, regular);
+    drawRight(money(amount), width - margin - 10, y - 2, 8.5, bold);
+    y -= 36;
+    page.drawLine({ start: { x: margin, y: y + 10 }, end: { x: width - margin, y: y + 10 }, thickness: 0.7, color: line });
+  }
+  y -= 3;
+  const totals = [
+    ["Subtotal", money(order.subtotal)],
+    ["Discount", Number(order.discount || 0) > 0 ? `- ${money(order.discount)}` : money(0)],
+    ["Tax", money(order.tax)]
+  ];
+  for (const [label, value] of totals) {
+    drawText(label, 375, y, 8.5, regular, muted);
+    drawRight(value, width - margin - 10, y, 8.5, regular);
+    y -= 17;
+  }
+  page.drawRectangle({ x: 363, y: y - 9, width: width - margin - 363, height: 31, color: purple });
+  drawText("TOTAL PAID", 375, y + 2, 9, bold, rgb(1, 1, 1));
+  drawRight(money(order.total ?? order.amount), width - margin - 10, y + 2, 10, bold, rgb(1, 1, 1));
+  const termsY = Math.min(y - 72, 286);
+  page.drawRectangle({ x: margin, y: termsY - 105, width: width - margin * 2, height: 116, color: rgb(0.98, 0.98, 0.99), borderColor: line, borderWidth: 1 });
+  drawText("TERMS & CONDITIONS", margin + 14, termsY - 8, 8.5, bold, purple);
+  const terms = [
+    "1. Digital goods are delivered electronically; no physical item will be shipped.",
+    "2. Download links are confidential and must not be shared, resold, or redistributed.",
+    "3. Email item links are time-limited and single-use; account download limits still apply.",
+    "4. Refunds and support are governed by the Terms & Conditions and Refund Policy on the website."
+  ];
+  terms.forEach((term, index) => drawText(term, margin + 14, termsY - 29 - index * 17, 7.7, regular, muted));
+  drawText(`Payment method: ${order.paymentProvider || order.paymentMethod || "Online payment"}`, margin, 106, 8, regular, muted);
+  drawText(`Business: ${businessAddress}`, margin, 91, 8, regular, muted);
+  if (gstin) drawText(`GSTIN: ${gstin}`, margin, 76, 8, regular, muted);
+  drawText(`Support: ${supportEmail}`, margin, 61, 8, regular, muted);
+  page.drawLine({ start: { x: margin, y: 44 }, end: { x: width - margin, y: 44 }, thickness: 0.8, color: line });
+  drawText("Computer-generated receipt - no signature required.", margin, 27, 7.5, regular, muted);
+  drawRight(`Invoice ${orderNumber}`, width - margin, 27, 7.5, regular, muted);
+  const bytes = await pdf.save();
+  return Buffer.from(bytes);
+}
+function buildPurchaseEmailHtml(order, links, options = {}) {
+  const customerName = escapeHtml(order.customer?.fullName || order.customerName || "Customer");
+  const orderNumber = escapeHtml(order.orderNumber || order.id || "");
+  const total = escapeHtml(money(order.total ?? order.amount));
+  const orderDate = escapeHtml(new Date(order.updatedAt || order.createdAt || Date.now()).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }));
+  const supportEmail = escapeHtml(process.env.INVOICE_SUPPORT_EMAIL || "support@yourdomain.com");
+  const accountUrl = `${getAppUrl()}/account`;
+  const linkRows = links.map((link) => {
+    const expiry = new Date(link.expiresAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px;border:1px solid #e6e7ec;border-radius:12px;background:#ffffff"><tr>
+      <td style="padding:17px 18px"><div style="font-size:15px;font-weight:700;color:#171923">${escapeHtml(link.productTitle)}</div><div style="font-size:12px;color:#747887;margin-top:5px">Secure ZIP package \xB7 One-time download</div></td>
+      <td align="right" style="padding:17px 18px"><a href="${escapeHtml(link.downloadUrl)}" style="display:inline-block;background:#5b45d6;color:#ffffff;text-decoration:none;padding:11px 16px;border-radius:8px;font-size:13px;font-weight:700">Download Item</a></td>
+    </tr><tr><td colspan="2" style="padding:0 18px 14px;font-size:11px;color:#8a8e9d">Link expires ${escapeHtml(expiry)} IST and works once.</td></tr></table>`;
+  }).join("");
+  const invoiceButton = options.invoiceUrl ? `<a href="${escapeHtml(options.invoiceUrl)}" style="display:inline-block;background:#ffffff;color:#4f3fc0;text-decoration:none;padding:12px 18px;border:1px solid #cfc9f7;border-radius:8px;font-size:13px;font-weight:700;margin:0 8px 8px 0">Download Invoice</a>` : "";
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head><body style="margin:0;background:#f3f4f8;font-family:Arial,Helvetica,sans-serif;color:#171923">
+    <div style="display:none;max-height:0;overflow:hidden;color:transparent">Payment confirmed. Your order and invoice are ready.</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f8"><tr><td align="center" style="padding:30px 12px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 28px rgba(23,25,35,.08)">
+        <tr><td style="background:#5546c9;padding:30px 34px;color:#ffffff"><table role="presentation" width="100%"><tr><td><div style="font-size:21px;font-weight:800">FreeFireShop</div><div style="font-size:11px;color:#dcd8ff;margin-top:4px;letter-spacing:1px">DIGITAL PRODUCTS & SERVICES</div></td><td align="right"><span style="display:inline-block;background:#d9fae8;color:#087647;padding:7px 11px;border-radius:99px;font-size:11px;font-weight:800">PAYMENT CONFIRMED</span></td></tr></table></td></tr>
+        <tr><td style="padding:34px">
+          <h1 style="font-size:25px;line-height:1.25;margin:0 0 12px;color:#171923">Your order is ready</h1>
+          <p style="font-size:15px;line-height:1.65;color:#5f6372;margin:0 0 24px">Hi ${customerName}, thank you for your purchase. Your payment was successful and your digital products are ready to download.</p>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f6ff;border:1px solid #e3e0fb;border-radius:12px;margin-bottom:26px"><tr>
+            <td style="padding:17px"><div style="font-size:10px;color:#77738f;letter-spacing:.7px;font-weight:700">ORDER NUMBER</div><div style="font-size:14px;font-weight:800;margin-top:5px">${orderNumber}</div></td>
+            <td style="padding:17px"><div style="font-size:10px;color:#77738f;letter-spacing:.7px;font-weight:700">ORDER DATE</div><div style="font-size:13px;font-weight:700;margin-top:5px">${orderDate} IST</div></td>
+            <td align="right" style="padding:17px"><div style="font-size:10px;color:#77738f;letter-spacing:.7px;font-weight:700">TOTAL PAID</div><div style="font-size:15px;font-weight:800;margin-top:5px;color:#4f3fc0">${total}</div></td>
+          </tr></table>
+
+          <h2 style="font-size:17px;margin:0 0 6px">Download your order items</h2>
+          <p style="font-size:12px;line-height:1.55;color:#747887;margin:0 0 14px">For security, each email link is private, time-limited and can be used once.</p>
+          ${linkRows}
+
+          <div style="margin:24px 0;padding:20px;background:#f7f6ff;border-radius:12px">
+            <div style="font-size:15px;font-weight:800;margin-bottom:6px">Invoice & account</div>
+            <div style="font-size:12px;line-height:1.55;color:#747887;margin-bottom:15px">A PDF invoice is attached to this email. You can also download it securely below.</div>
+            ${invoiceButton}<a href="${escapeHtml(accountUrl)}" style="display:inline-block;color:#4f3fc0;text-decoration:none;padding:12px 8px;font-size:13px;font-weight:700">View My Account \u2192</a>
+          </div>
+
+          <div style="border-top:1px solid #ececf1;padding-top:22px;margin-top:26px"><div style="font-size:13px;font-weight:800;margin-bottom:10px">Important terms</div>
+            <ul style="padding-left:18px;margin:0;color:#686c7b;font-size:11px;line-height:1.7"><li>Digital products are delivered electronically; no physical item will be shipped.</li><li>Links and purchased files are for the purchaser only and must not be shared, resold or redistributed.</li><li>Account download limits continue to apply after an email link is used or expires.</li><li>Refunds and support follow the Terms & Conditions and Refund Policy published on our website.</li></ul>
+          </div>
+        </td></tr>
+        <tr><td style="background:#171923;padding:24px 34px;color:#b9bdc9;font-size:11px;line-height:1.6"><strong style="color:#ffffff">Need help?</strong> Contact <a href="mailto:${supportEmail}" style="color:#c8c1ff">${supportEmail}</a>.<br>Please keep this email private because it contains secure access links.</td></tr>
+      </table>
+    </td></tr></table>
+  </body></html>`;
+}
+function buildPurchaseEmailText(order, links, options = {}) {
+  const rows = links.map((link) => `${link.productTitle}: ${link.downloadUrl}
+Expires: ${new Date(link.expiresAt).toISOString()}`).join("\n\n");
+  const invoice = options.invoiceUrl ? `
+
+Download invoice: ${options.invoiceUrl}` : "";
+  return `Payment successful
+
+Order: ${order.orderNumber || order.id}
+Amount paid: ${money(order.total ?? order.amount)}
+
+Download your order items:
+${rows}${invoice}
+
+A PDF invoice is attached. Keep these private links secure. Terms and refund rules are available on our website.`;
+}
+async function sendPurchaseConfirmationEmail(order, links, options = {}) {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.RESEND_FROM_EMAIL?.trim();
+  const to = String(order.customer?.email || order.customerEmail || "").trim();
+  if (!apiKey || !from) {
+    return { status: "not_configured", reason: "Resend environment variables are not configured." };
+  }
+  if (!to) {
+    return { status: "failed", reason: "The order does not contain a customer email address." };
+  }
+  const invoice = await buildInvoicePdf(order);
+  const orderNumber = String(order.orderNumber || order.id || "order");
+  const safeOrderNumber = orderNumber.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80);
+  const resend = new Resend(apiKey);
+  const response = await resend.emails.send({
+    from,
+    to,
+    subject: `Your order ${orderNumber} is ready`,
+    html: buildPurchaseEmailHtml(order, links, options),
+    text: buildPurchaseEmailText(order, links, options),
+    attachments: [{
+      filename: `invoice-${safeOrderNumber}.pdf`,
+      content: invoice,
+      contentType: "application/pdf"
+    }],
+    tags: [{ name: "order_id", value: safeOrderNumber || "order" }]
+  }, {
+    idempotencyKey: `purchase-confirmation/${safeOrderNumber || "order"}`
+  });
+  if (response.error || !response.data?.id) {
+    return { status: "failed", reason: response.error?.message || "Resend did not accept the email." };
+  }
+  return { status: "sent", emailId: response.data.id };
+}
+
 // server/app.ts
 runServerSeed().catch((err) => console.warn("Startup seed error:", err));
 var APP_URL = process.env.APP_URL || "http://localhost:3000";
@@ -1614,14 +2537,18 @@ var EASEBUZZ_ENV = process.env.EASEBUZZ_ENV || "test";
 var CRON_SECRET = process.env.CRON_SECRET || "";
 var EASEBUZZ_BASE_URL = EASEBUZZ_ENV === "prod" ? "https://pay.easebuzz.in" : "https://testpay.easebuzz.in";
 var easebuzzHash = (data) => {
-  return crypto3.createHash("sha512").update(data).digest("hex");
+  return crypto4.createHash("sha512").update(data).digest("hex");
+};
+var getProductCatalog = async () => {
+  const databaseProducts = await FirebaseRtdb.getAllProducts();
+  return mergeProductCatalog(PRODUCTS, databaseProducts);
 };
 var verifyEasebuzzHash = (params, salt) => {
   const { hash, status, udf10, udf9, udf8, udf7, udf6, udf5, udf4, udf3, udf2, udf1, email, firstname, productinfo, amount, txnid, key } = params;
   const hashString = `${salt}|${status}|${udf10 || ""}|${udf9 || ""}|${udf8 || ""}|${udf7 || ""}|${udf6 || ""}|${udf5 || ""}|${udf4 || ""}|${udf3 || ""}|${udf2 || ""}|${udf1 || ""}|${email || ""}|${firstname || ""}|${productinfo || ""}|${amount || ""}|${txnid || ""}|${key || ""}`;
   const calculatedHash = easebuzzHash(hashString);
   try {
-    return crypto3.timingSafeEqual(Buffer.from(hash || ""), Buffer.from(calculatedHash));
+    return crypto4.timingSafeEqual(Buffer.from(hash || ""), Buffer.from(calculatedHash));
   } catch {
     return false;
   }
@@ -1708,18 +2635,15 @@ app.get("/api/firebase-status", async (req, res) => {
 });
 app.get("/api/products", async (req, res) => {
   try {
-    const products = await FirebaseRtdb.getAllProducts();
-    const activeProducts = products && products.length > 0 ? products.filter((p) => p.status !== "archived") : PRODUCTS;
-    res.json({ success: true, products: activeProducts });
+    res.json({ success: true, products: await getProductCatalog() });
   } catch {
-    res.json({ success: true, products: PRODUCTS });
+    res.json({ success: true, products: mergeProductCatalog(PRODUCTS, []) });
   }
 });
 app.get("/api/products/:slugOrId", async (req, res) => {
   try {
     const identifier = req.params.slugOrId.toLowerCase();
-    const products = await FirebaseRtdb.getAllProducts();
-    const list = products && products.length > 0 ? products : PRODUCTS;
+    const list = await getProductCatalog();
     const found = list.find((p) => p.id.toLowerCase() === identifier || p.slug.toLowerCase() === identifier);
     if (!found) {
       return res.status(404).json({ success: false, message: "Product not found." });
@@ -1897,8 +2821,7 @@ var handleOrderCreation = async (req, res) => {
     const validatedItems = [];
     let primaryProductId = "";
     let primaryProductName = "";
-    const dbProducts = await FirebaseRtdb.getAllProducts();
-    const productList = dbProducts && dbProducts.length > 0 ? dbProducts : PRODUCTS;
+    const productList = await getProductCatalog();
     for (const ci of items) {
       const rawId = ci.productId || ci.product?.id || ci.id;
       const matchedProduct = productList.find((p) => p.id === rawId || p.slug === rawId);
@@ -1915,8 +2838,6 @@ var handleOrderCreation = async (req, res) => {
       }
       const serverPrice = matchedProduct.price;
       calculatedSubtotal += serverPrice * quantity;
-      const keyHex1 = Math.random().toString(16).substring(2, 6).toUpperCase();
-      const keyHex2 = Math.random().toString(16).substring(2, 6).toUpperCase();
       validatedItems.push({
         productId: matchedProduct.id,
         productTitle: matchedProduct.title,
@@ -1924,10 +2845,8 @@ var handleOrderCreation = async (req, res) => {
         productImage: matchedProduct.image,
         category: matchedProduct.categoryLabel || matchedProduct.category,
         productType: matchedProduct.productType || "DOWNLOAD",
-        licenseType: ci.licenseType || "Standard",
         price: serverPrice,
         quantity,
-        licenseKey: `KEY-${matchedProduct.slug.substring(0, 3).toUpperCase()}-${keyHex1}-${keyHex2}`,
         downloadUrl: `/api/downloads/${matchedProduct.id}`,
         fileSize: matchedProduct.fileSize || "12.4 MB",
         version: matchedProduct.version || "v1.2.0",
@@ -2084,6 +3003,113 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
     res.status(500).json({ success: false, message: "Easebuzz payment initiation failed." });
   }
 });
+var isOrderFulfilled = async (order) => {
+  if (order.fulfillmentStatus === "READY") return true;
+  if (!order.userId || !Array.isArray(order.items) || order.items.length === 0) return false;
+  const purchases = await FirebaseRtdb.getUserPurchases(order.userId);
+  const hasEveryEntitlement = order.items.every((item) => purchases.some((purchase) => purchase.orderId === order.id && purchase.productId === item.productId && purchase.accessStatus === "active"));
+  if (hasEveryEntitlement) {
+    order.fulfillmentStatus = "READY";
+    order.fulfilledAt = order.fulfilledAt || order.updatedAt || (/* @__PURE__ */ new Date()).toISOString();
+    await FirebaseRtdb.saveGlobalOrder(order);
+  }
+  return hasEveryEntitlement;
+};
+var createPurchaseEmailLinks = async (order) => {
+  const createdAt = Date.now();
+  const expiresAt = createdAt + getPurchaseEmailLinkTtlMs();
+  const links = [];
+  const linkedProductIds = /* @__PURE__ */ new Set();
+  for (const item of order.items || []) {
+    if (!item.productId || linkedProductIds.has(item.productId)) continue;
+    linkedProductIds.add(item.productId);
+    const rawToken = createEmailDownloadToken();
+    const tokenHash = hashEmailDownloadToken(rawToken);
+    const purchaseId = `pur_${order.id}_${item.productId}`;
+    await FirebaseRtdb.set(`emailDownloadTokens/${tokenHash}`, {
+      tokenHash,
+      userId: order.userId,
+      orderId: order.id,
+      purchaseId,
+      productId: item.productId,
+      productTitle: item.productTitle || item.productId || "Digital Product",
+      createdAt,
+      expiresAt,
+      used: false
+    });
+    links.push({
+      productId: item.productId,
+      productTitle: item.productTitle || item.productId || "Digital Product",
+      downloadUrl: buildEmailDownloadUrl(rawToken),
+      expiresAt
+    });
+  }
+  return links;
+};
+var createPurchaseInvoiceLink = async (order) => {
+  const rawToken = createEmailDownloadToken();
+  const tokenHash = hashEmailDownloadToken(rawToken);
+  const createdAt = Date.now();
+  await FirebaseRtdb.set(`invoiceDownloadTokens/${tokenHash}`, {
+    tokenHash,
+    userId: order.userId,
+    orderId: order.id,
+    createdAt,
+    expiresAt: createdAt + getPurchaseEmailLinkTtlMs(),
+    downloadCount: 0,
+    downloadLimit: 10
+  });
+  return buildInvoiceDownloadUrl(rawToken);
+};
+var sendPurchaseEmailSafely = async (order) => {
+  if (order.emailDelivery?.status === "sent") return;
+  const attemptedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const previousAttempts = Number(order.emailDelivery?.attempts || 0);
+  try {
+    if (!process.env.RESEND_API_KEY?.trim() || !process.env.RESEND_FROM_EMAIL?.trim()) {
+      order.emailDelivery = {
+        status: "not_configured",
+        attempts: previousAttempts,
+        lastAttemptAt: attemptedAt,
+        message: "Resend is not configured."
+      };
+      await FirebaseRtdb.saveGlobalOrder(order);
+      return;
+    }
+    if (!String(order.customer?.email || order.customerEmail || "").trim()) {
+      order.emailDelivery = {
+        status: "failed",
+        attempts: previousAttempts,
+        lastAttemptAt: attemptedAt,
+        message: "The order does not contain a customer email address."
+      };
+      await FirebaseRtdb.saveGlobalOrder(order);
+      return;
+    }
+    const links = await createPurchaseEmailLinks(order);
+    const invoiceUrl = await createPurchaseInvoiceLink(order);
+    const result = await sendPurchaseConfirmationEmail(order, links, { invoiceUrl });
+    order.emailDelivery = {
+      status: result.status,
+      attempts: previousAttempts + 1,
+      lastAttemptAt: attemptedAt,
+      ...result.status === "sent" ? { sentAt: attemptedAt, emailId: result.emailId } : {},
+      ...result.reason ? { message: result.reason.slice(0, 240) } : {}
+    };
+    await FirebaseRtdb.saveGlobalOrder(order);
+  } catch (error) {
+    order.emailDelivery = {
+      status: "failed",
+      attempts: previousAttempts + 1,
+      lastAttemptAt: attemptedAt,
+      message: String(error?.message || "Purchase email delivery failed.").slice(0, 240)
+    };
+    try {
+      await FirebaseRtdb.saveGlobalOrder(order);
+    } catch {
+    }
+  }
+};
 async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
   if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
     return { success: false, message: "Easebuzz payment gateway is not configured yet." };
@@ -2093,6 +3119,12 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
     return { success: false, message: "Order not found" };
   }
   if (String(globalOrder.paymentStatus).toUpperCase() === "PAID") {
+    try {
+      if (await isOrderFulfilled(globalOrder)) {
+        await sendPurchaseEmailSafely(globalOrder);
+      }
+    } catch {
+    }
     return { success: true, status: "PAID", orderId: globalOrder.id, message: "Already paid" };
   }
   const txnid = globalOrder.orderNumber || globalOrder.id;
@@ -2173,11 +3205,13 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
       createdAt: now,
       downloadUrl: item.downloadUrl,
       fileSize: item.fileSize,
-      fileFormat: item.fileFormat,
-      licenseKey: item.licenseKey
+      fileFormat: item.fileFormat
     });
   }
   await FirebaseRtdb.setUserCart(userId, []);
+  globalOrder.fulfillmentStatus = "READY";
+  globalOrder.fulfilledAt = now;
+  await FirebaseRtdb.saveGlobalOrder(globalOrder);
   await AuditLogger.log({
     requestId: generateRequestId(),
     userId,
@@ -2187,6 +3221,7 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
     source: "EASEBUZZ_CALLBACK",
     metadata: { easebuzzId, amount: expectedAmount }
   });
+  await sendPurchaseEmailSafely(globalOrder);
   return { success: true, status: "PAID", orderId: globalOrder.id };
 }
 app.post("/api/payments/easebuzz/callback", async (req, res) => {
@@ -2261,11 +3296,15 @@ app.post("/api/payments/easebuzz/reconcile-cron", async (req, res) => {
     }
     const allOrders = await FirebaseRtdb.getAllGlobalOrders();
     const tenMinsAgo = Date.now() - 10 * 60 * 1e3;
-    const pendingOrders = allOrders.filter(
-      (o) => (o.status === "PENDING_PAYMENT" || String(o.paymentStatus).toUpperCase() === "PENDING") && new Date(o.createdAt || o.date || 0).getTime() < tenMinsAgo
-    );
+    const reconciliationOrders = allOrders.filter((order) => {
+      const paymentStatus = String(order.paymentStatus).toUpperCase();
+      const isStuckPayment = (order.status === "PENDING_PAYMENT" || paymentStatus === "PENDING") && new Date(order.createdAt || order.date || 0).getTime() < tenMinsAgo;
+      const lastEmailAttempt = new Date(order.emailDelivery?.lastAttemptAt || 0).getTime();
+      const needsEmailRetry = paymentStatus === "PAID" && order.emailDelivery?.status !== "sent" && lastEmailAttempt < tenMinsAgo;
+      return isStuckPayment || needsEmailRetry;
+    });
     const results = [];
-    for (const ord of pendingOrders) {
+    for (const ord of reconciliationOrders) {
       const resSync = await verifyAndSyncEasebuzzOrder(ord.id);
       results.push({ orderId: ord.id, ...resSync });
     }
@@ -2281,12 +3320,12 @@ app.post("/api/downloads/:productId/token", requireAuth, async (req, res) => {
     const purchases = await FirebaseRtdb.getUserPurchases(userId);
     const purchase = purchases.find((p) => p.productId === productId && p.accessStatus === "active");
     if (!purchase) {
-      return res.status(403).json({ success: false, message: "Active purchase license not found for this product." });
+      return res.status(403).json({ success: false, message: "Active purchase access not found for this product." });
     }
     if (purchase.downloadCount >= (purchase.downloadLimit || 10)) {
-      return res.status(403).json({ success: false, message: "Download limit has been reached for this product license." });
+      return res.status(403).json({ success: false, message: "Download limit has been reached for this purchase." });
     }
-    const tokenId = `DL-TOK-${crypto3.randomBytes(24).toString("base64url")}`;
+    const tokenId = `DL-TOK-${crypto4.randomBytes(24).toString("base64url")}`;
     const expiresAt = Date.now() + 15 * 60 * 1e3;
     const tokenData = {
       tokenId,
@@ -2331,26 +3370,109 @@ app.get("/api/downloads/stream", async (req, res) => {
       (p) => (p.purchaseId === tokenData.purchaseId || p.productId === tokenData.productId) && p.accessStatus === "active"
     );
     if (!purchase) {
-      return res.status(403).send("Active purchase license not found for this download.");
+      return res.status(403).send("Active purchase access not found for this download.");
     }
     const currentCount = purchase.downloadCount || 0;
     const limit = purchase.downloadLimit || 10;
     if (currentCount >= limit) {
-      return res.status(403).send("Download limit has been reached for this license.");
+      return res.status(403).send("Download limit has been reached for this purchase.");
     }
-    const upstream = await SecureFileManager.fetchProductFile(tokenData.productId);
+    const source = await SecureFileManager.openProductFile(tokenData.productId);
     tokenData.used = true;
     await FirebaseRtdb.set(`downloadTokens/${token}`, tokenData);
     purchase.downloadCount = currentCount + 1;
     await FirebaseRtdb.savePurchase(tokenData.userId, purchase.purchaseId, purchase);
     const filename = `${tokenData.productId}-package.zip`;
-    SecureFileManager.streamProductFileToResponse(upstream, filename, res);
+    SecureFileManager.streamProductFileToResponse(source, filename, res);
   } catch (err) {
     if (!res.headersSent) {
       const isConfigurationError = String(err?.message || "").includes("PRODUCT_DOWNLOAD_URL");
       return res.status(isConfigurationError ? 503 : 502).send(isConfigurationError ? "Product download is not configured yet." : "Product download is temporarily unavailable.");
     }
     res.destroy(err);
+  }
+});
+app.get("/api/downloads/email", async (req, res) => {
+  try {
+    const rawToken = typeof req.query.token === "string" ? req.query.token : "";
+    if (!/^[A-Za-z0-9_-]{43}$/.test(rawToken)) {
+      return res.status(400).send("A valid email download token is required.");
+    }
+    const tokenHash = hashEmailDownloadToken(rawToken);
+    const tokenPath = `emailDownloadTokens/${tokenHash}`;
+    const tokenData = await FirebaseRtdb.get(tokenPath);
+    if (!tokenData) {
+      return res.status(403).send("Invalid download link.");
+    }
+    if (Date.now() > tokenData.expiresAt) {
+      await FirebaseRtdb.delete(tokenPath);
+      return res.status(403).send("Download link has expired. Sign in to your account to create a new link.");
+    }
+    if (tokenData.used) {
+      return res.status(403).send("Download link has already been used. Sign in to your account to create a new link.");
+    }
+    const purchases = await FirebaseRtdb.getUserPurchases(tokenData.userId);
+    const purchase = purchases.find((candidate) => candidate.purchaseId === tokenData.purchaseId && candidate.orderId === tokenData.orderId && candidate.productId === tokenData.productId && candidate.accessStatus === "active");
+    if (!purchase) {
+      return res.status(403).send("Active purchase access not found for this download.");
+    }
+    const currentCount = Number(purchase.downloadCount || 0);
+    const limit = Number(purchase.downloadLimit || 10);
+    if (currentCount >= limit) {
+      return res.status(403).send("Download limit has been reached for this purchase.");
+    }
+    const source = await SecureFileManager.openProductFile(tokenData.productId);
+    tokenData.used = true;
+    tokenData.usedAt = (/* @__PURE__ */ new Date()).toISOString();
+    await FirebaseRtdb.set(tokenPath, tokenData);
+    purchase.downloadCount = currentCount + 1;
+    await FirebaseRtdb.savePurchase(tokenData.userId, purchase.purchaseId, purchase);
+    SecureFileManager.streamProductFileToResponse(source, `${tokenData.productId}-package.zip`, res);
+  } catch (err) {
+    if (!res.headersSent) {
+      const isConfigurationError = String(err?.message || "").includes("PRODUCT_DOWNLOAD_URL");
+      return res.status(isConfigurationError ? 503 : 502).send(isConfigurationError ? "Product download is not configured yet." : "Product download is temporarily unavailable.");
+    }
+    res.destroy(err);
+  }
+});
+app.get("/api/invoices/email", async (req, res) => {
+  try {
+    const rawToken = typeof req.query.token === "string" ? req.query.token : "";
+    if (!/^[A-Za-z0-9_-]{43}$/.test(rawToken)) {
+      return res.status(400).send("A valid invoice token is required.");
+    }
+    const tokenHash = hashEmailDownloadToken(rawToken);
+    const tokenPath = `invoiceDownloadTokens/${tokenHash}`;
+    const tokenData = await FirebaseRtdb.get(tokenPath);
+    if (!tokenData) {
+      return res.status(403).send("Invalid invoice link.");
+    }
+    if (Date.now() > tokenData.expiresAt) {
+      await FirebaseRtdb.delete(tokenPath);
+      return res.status(403).send("Invoice link has expired. Sign in to your account to view the order.");
+    }
+    const currentCount = Number(tokenData.downloadCount || 0);
+    const limit = Number(tokenData.downloadLimit || 10);
+    if (currentCount >= limit) {
+      return res.status(403).send("Invoice download limit has been reached.");
+    }
+    const order = await FirebaseRtdb.getGlobalOrder(tokenData.orderId);
+    if (!order || order.userId !== tokenData.userId || String(order.paymentStatus).toUpperCase() !== "PAID") {
+      return res.status(403).send("Paid order not found for this invoice.");
+    }
+    const invoice = await buildInvoicePdf(order);
+    tokenData.downloadCount = currentCount + 1;
+    tokenData.lastDownloadedAt = (/* @__PURE__ */ new Date()).toISOString();
+    await FirebaseRtdb.set(tokenPath, tokenData);
+    const orderNumber = String(order.orderNumber || order.id || "order").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="invoice-${orderNumber}.pdf"`);
+    res.setHeader("Content-Length", invoice.length);
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    return res.status(200).send(invoice);
+  } catch {
+    return res.status(500).send("Invoice is temporarily unavailable.");
   }
 });
 app.get("/api/admin/audit-logs", requireAdmin, async (req, res) => {

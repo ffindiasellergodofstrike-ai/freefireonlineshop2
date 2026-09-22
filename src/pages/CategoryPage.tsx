@@ -12,8 +12,10 @@ import { useApp } from '../context/AppContext';
 import { ProductService } from '../services/ProductService';
 import { CATEGORIES } from '../data/products';
 import { ProductGrid } from '../components/ProductGrid';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 
 export const CategoryPage: React.FC = () => {
+  useProductCatalog();
   const { pathParams } = useApp();
   const slug = pathParams.slug || 'scripts';
 

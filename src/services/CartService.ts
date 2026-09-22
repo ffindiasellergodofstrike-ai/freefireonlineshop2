@@ -28,19 +28,37 @@ class CartServiceImpl {
     });
   }
 
+  private normalizeItems(rawItems: any[]): CartItem[] {
+    const byProductId = new Map<string, CartItem>();
+
+    for (const item of rawItems) {
+      const fresh = ProductService.getProductById(item?.product?.id || item?.productId) || item?.product;
+      if (!fresh?.id) continue;
+
+      const quantity = Math.max(1, Number.parseInt(item.quantity, 10) || 1);
+      const existing = byProductId.get(fresh.id);
+      if (existing) {
+        existing.quantity += quantity;
+        continue;
+      }
+
+      byProductId.set(fresh.id, {
+        product: fresh,
+        price: fresh.price,
+        quantity,
+        addedAt: item.addedAt || new Date().toISOString(),
+      });
+    }
+
+    return Array.from(byProductId.values());
+  }
+
   private loadFromStorage() {
     try {
       const stored = localStorage.getItem(CART_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        this.items = parsed.map((item: any) => {
-          const fresh = ProductService.getProductById(item.product?.id || item.productId) || item.product;
-          return {
-            ...item,
-            product: fresh,
-            price: item.licenseType === 'Extended' ? (fresh.extendedPrice || fresh.price * 2.5) : fresh.price,
-          };
-        });
+        this.items = this.normalizeItems(Array.isArray(parsed) ? parsed : []);
       }
       const storedCoupon = localStorage.getItem(COUPON_STORAGE_KEY);
       if (storedCoupon) {
@@ -76,14 +94,7 @@ class CartServiceImpl {
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.items)) {
-          this.items = data.items.map((item: any) => {
-            const fresh = ProductService.getProductById(item.product?.id || item.productId) || item.product;
-            return {
-              ...item,
-              product: fresh,
-              price: item.licenseType === 'Extended' ? (fresh?.extendedPrice || fresh?.price * 2.5) : fresh?.price,
-            };
-          });
+          this.items = this.normalizeItems(data.items);
           localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(this.items));
           this.notify();
         }
@@ -128,19 +139,15 @@ class CartServiceImpl {
     return this.items.reduce((sum, item) => sum + item.quantity, 0);
   }
 
-  public addItem(product: Product, licenseType: 'Standard' | 'Extended' = 'Standard', quantity = 1): void {
-    const existingIndex = this.items.findIndex(
-      (item) => item.product.id === product.id && item.licenseType === licenseType
-    );
-    const unitPrice = licenseType === 'Extended' ? (product.extendedPrice || product.price * 2.5) : product.price;
+  public addItem(product: Product, quantity = 1): void {
+    const existingIndex = this.items.findIndex((item) => item.product.id === product.id);
 
     if (existingIndex > -1) {
       this.items[existingIndex].quantity += quantity;
     } else {
       this.items.push({
         product,
-        licenseType,
-        price: unitPrice,
+        price: product.price,
         quantity,
         addedAt: new Date().toISOString(),
       });
@@ -148,21 +155,17 @@ class CartServiceImpl {
     this.saveToStorage();
   }
 
-  public removeItem(productId: string, licenseType: 'Standard' | 'Extended'): void {
-    this.items = this.items.filter(
-      (item) => !(item.product.id === productId && item.licenseType === licenseType)
-    );
+  public removeItem(productId: string): void {
+    this.items = this.items.filter((item) => item.product.id !== productId);
     this.saveToStorage();
   }
 
-  public updateQuantity(productId: string, licenseType: 'Standard' | 'Extended', quantity: number): void {
+  public updateQuantity(productId: string, quantity: number): void {
     if (quantity <= 0) {
-      this.removeItem(productId, licenseType);
+      this.removeItem(productId);
       return;
     }
-    const target = this.items.find(
-      (item) => item.product.id === productId && item.licenseType === licenseType
-    );
+    const target = this.items.find((item) => item.product.id === productId);
     if (target) {
       target.quantity = quantity;
       this.saveToStorage();

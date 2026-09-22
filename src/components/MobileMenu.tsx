@@ -252,14 +252,6 @@ export const MobileMenu: React.FC = () => {
                   <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 </button>
 
-                <button
-                  onClick={() => handleNav('/license')}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-100 text-slate-600 text-xs font-medium transition-colors text-left min-h-[44px]"
-                >
-                  <span className="truncate">Commercial Licensing Terms</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                </button>
-
                 {currentUser?.email === 'ff.india.seller.god.of.strike@gmail.com' && (
                   <button
                     onClick={() => handleNav('/admin')}

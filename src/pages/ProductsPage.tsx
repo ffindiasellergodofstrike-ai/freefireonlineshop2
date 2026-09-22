@@ -4,8 +4,10 @@ import { useApp } from '../context/AppContext';
 import { ProductService, ProductFilters } from '../services/ProductService';
 import { CATEGORIES } from '../data/products';
 import { ProductGrid } from '../components/ProductGrid';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 
 export const ProductsPage: React.FC = () => {
+  const catalog = useProductCatalog();
   const { searchParams, navigate } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState<string>(
@@ -24,7 +26,7 @@ export const ProductsPage: React.FC = () => {
     const set = new Set<string>();
     ProductService.getAllProducts().forEach((p) => p.tags.forEach((t) => set.add(t)));
     return Array.from(set);
-  }, []);
+  }, [catalog]);
 
   // Filter products
   const filterCriteria: ProductFilters = {
