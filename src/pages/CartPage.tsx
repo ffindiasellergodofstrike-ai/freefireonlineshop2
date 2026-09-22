@@ -64,47 +64,32 @@ export const CartPage: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       {/* Page Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Shopping Cart</h1>
-          <p className="text-slate-500 text-xs sm:text-sm mt-1">
-            Review your digital products and proceed to instant checkout.
-          </p>
-        </div>
-
-        <button
-          id="clear-entire-cart-btn"
-          onClick={clearCart}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors self-start"
-        >
-          <Trash2 className="w-4 h-4" />
-          <span>Clear Cart</span>
-        </button>
+      <div className="pb-4 border-b border-slate-200">
+        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Shopping Cart</h1>
+        <p className="text-slate-500 text-xs sm:text-sm mt-1">
+          Review your digital products and proceed to instant checkout.
+        </p>
       </div>
 
-      {/* 2-Column Grid: Cart Items List + Order Summary Box */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Cart Items List - 8 cols */}
-        <div className="lg:col-span-8 space-y-4">
-          <div className="space-y-3">
-            {cartItems.map((item) => (
-              <CartItem key={item.product.id} item={item} />
-            ))}
+      {/* Combined Single Card layout */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-100">
+          
+          {/* Left Column: Cart Items List - 7 cols */}
+          <div className="lg:col-span-7 p-5 sm:p-8 space-y-6">
+            <h3 className="text-lg font-bold text-slate-900 pb-3 border-b border-slate-100">
+              Shopping Bag Items ({cartSummary.itemCount})
+            </h3>
+            
+            <div className="space-y-4">
+              {cartItems.map((item) => (
+                <CartItem key={item.product.id} item={item} />
+              ))}
+            </div>
           </div>
 
-          <div className="pt-4 flex items-center justify-between">
-            <button
-              onClick={() => navigate('/products')}
-              className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
-            >
-              <span>← Continue Shopping</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Order Summary & Coupon Card - 4 cols */}
-        <div className="lg:col-span-4 space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-md p-6 space-y-6 sticky top-24">
+          {/* Right Column: Order Summary & Coupon Box - 5 cols */}
+          <div className="lg:col-span-5 p-5 sm:p-8 bg-slate-50/50 space-y-6">
             <h3 className="text-lg font-bold text-slate-900 pb-3 border-b border-slate-100">
               Order Summary
             </h3>
@@ -112,7 +97,7 @@ export const CartPage: React.FC = () => {
             {/* Subtotal, Discount, Tax, Total */}
             <div className="space-y-3 text-xs sm:text-sm">
               <div className="flex justify-between text-slate-600">
-                <span>Items Subtotal ({cartSummary.itemCount})</span>
+                <span>Items Subtotal</span>
                 <span className="font-semibold text-slate-900 font-mono">
                   ₹{cartSummary.subtotal.toFixed(2)}
                 </span>
@@ -147,7 +132,7 @@ export const CartPage: React.FC = () => {
               </label>
 
               {appliedCoupon ? (
-                <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs">
+                <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs bg-white">
                   <div className="flex items-center gap-2">
                     <Tag className="w-4 h-4 text-blue-600" />
                     <div>
@@ -176,11 +161,11 @@ export const CartPage: React.FC = () => {
                         setCouponCode(e.target.value.toUpperCase());
                         setCouponError('');
                       }}
-                      className="flex-1 px-3 py-2 text-xs uppercase font-mono bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 px-3 py-2 text-xs uppercase font-mono bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <button
                       type="submit"
-                      className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition-colors"
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition-colors animate-all"
                     >
                       Apply
                     </button>
@@ -212,6 +197,7 @@ export const CartPage: React.FC = () => {
               </div>
             </div>
           </div>
+
         </div>
       </div>
     </div>

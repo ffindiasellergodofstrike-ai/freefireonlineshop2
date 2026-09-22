@@ -13,7 +13,7 @@ import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 
 export const RegisterPage: React.FC = () => {
-  const { register, isAuthenticated, currentUser, navigate } = useApp();
+  const { register, isAuthenticated, currentUser, navigate, searchParams } = useApp();
   const { showToast } = useToast();
 
   const [name, setName] = useState('');
@@ -28,9 +28,13 @@ export const RegisterPage: React.FC = () => {
 
   React.useEffect(() => {
     if (isAuthenticated && currentUser) {
-      navigate('/account');
+      if (searchParams?.redirect === 'checkout') {
+        navigate('/checkout');
+      } else {
+        navigate('/account');
+      }
     }
-  }, [isAuthenticated, currentUser, navigate]);
+  }, [isAuthenticated, currentUser, navigate, searchParams]);
 
   const handleMobileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Strictly accept ONLY digits and cap length at 10
@@ -275,7 +279,7 @@ export const RegisterPage: React.FC = () => {
               Already have an account?{' '}
               <button
                 type="button"
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/login', undefined, searchParams?.redirect ? { redirect: searchParams.redirect } : undefined)}
                 className="font-extrabold text-blue-600 hover:text-blue-700 transition-colors min-h-[44px] px-2"
               >
                 Sign In

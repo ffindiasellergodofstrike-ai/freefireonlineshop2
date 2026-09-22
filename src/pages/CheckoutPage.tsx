@@ -70,6 +70,15 @@ export const CheckoutPage: React.FC = () => {
     }
   }, [searchParams]);
 
+  // Sync customer form data when currentUser is loaded
+  useEffect(() => {
+    if (currentUser) {
+      if (!customerName) setCustomerName(currentUser.name || '');
+      if (!customerEmail) setCustomerEmail(currentUser.email || '');
+      if (!customerPhone) setCustomerPhone(currentUser.mobile || '');
+    }
+  }, [currentUser]);
+
   const handleSuccessfulPayment = async (orderId: string) => {
     setIsVerifying(true);
     try {
@@ -360,6 +369,43 @@ export const CheckoutPage: React.FC = () => {
     );
   }
 
+  // AUTH REQUIREMENT GUARD
+  if (!currentUser) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-8">
+        <div className="w-20 h-20 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto shadow-inner border border-blue-100">
+          <Lock className="w-10 h-10" />
+        </div>
+        <div className="space-y-3">
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Login Required</h1>
+          <p className="text-slate-600 max-w-sm mx-auto text-sm leading-relaxed">
+            Please sign in to your FreeFireShop account or create a new one to place orders, manage billing, and access instant downloads.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+          <button
+            onClick={() => navigate('/login', undefined, { redirect: 'checkout' })}
+            className="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-sm transition-all shadow-lg shadow-blue-500/20 active:scale-95 min-h-[44px]"
+          >
+            Sign In Now
+          </button>
+          <button
+            onClick={() => navigate('/register', undefined, { redirect: 'checkout' })}
+            className="w-full sm:w-auto px-8 py-3 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 font-extrabold rounded-xl text-sm transition-all active:scale-95 min-h-[44px]"
+          >
+            Create Account
+          </button>
+        </div>
+
+        <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl text-[11px] text-slate-500 flex items-start gap-2.5 text-left max-w-md mx-auto">
+          <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          <span>You can still add items to your cart without signing in, but a registered customer account is required to generate transactional secure download vaults and invoices.</span>
+        </div>
+      </div>
+    );
+  }
+
   // STANDARD CHECKOUT FORM VIEW
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -525,14 +571,14 @@ export const CheckoutPage: React.FC = () => {
 
             <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto space-y-2">
               {cartItems.map((item) => (
-                <div key={item.product.id} className="pt-2 flex justify-between gap-3 text-xs">
-                  <div className="min-w-0">
-                    <p className="font-bold text-slate-900 truncate">{item.product.title}</p>
-                    <p className="text-slate-500">
+                <div key={item.product.id} className="pt-2 flex justify-between gap-4 text-xs min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-slate-900 line-clamp-2 break-words leading-tight">{item.product.title}</p>
+                    <p className="text-slate-500 mt-0.5">
                       Qty: {item.quantity}
                     </p>
                   </div>
-                  <span className="font-mono font-bold text-slate-800">
+                  <span className="font-mono font-bold text-slate-800 shrink-0">
                     ₹{(item.price * item.quantity).toFixed(2)}
                   </span>
                 </div>

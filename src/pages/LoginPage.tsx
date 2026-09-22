@@ -15,7 +15,7 @@ import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 
 export const LoginPage: React.FC = () => {
-  const { signIn, isAuthenticated, currentUser, navigate } = useApp();
+  const { signIn, isAuthenticated, currentUser, navigate, searchParams } = useApp();
   const { showToast } = useToast();
 
   const [identifier, setIdentifier] = useState('');
@@ -24,12 +24,16 @@ export const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // If already authenticated, redirect to /account
+  // If already authenticated, redirect
   React.useEffect(() => {
     if (isAuthenticated && currentUser) {
-      navigate('/account');
+      if (searchParams?.redirect === 'checkout') {
+        navigate('/checkout');
+      } else {
+        navigate('/account');
+      }
     }
-  }, [isAuthenticated, currentUser, navigate]);
+  }, [isAuthenticated, currentUser, navigate, searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,7 +191,7 @@ export const LoginPage: React.FC = () => {
               New to FreeFireShop?{' '}
               <button
                 type="button"
-                onClick={() => navigate('/register')}
+                onClick={() => navigate('/register', undefined, searchParams?.redirect ? { redirect: searchParams.redirect } : undefined)}
                 className="font-extrabold text-blue-600 hover:text-blue-700 transition-colors min-h-[44px] px-2"
               >
                 Create Account

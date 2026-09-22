@@ -16,15 +16,15 @@ export const CartItem: React.FC<CartItemProps> = ({ item }) => {
   return (
     <div
       id={`cart-item-${product.id}`}
-      className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 sm:p-5 bg-white rounded-2xl border border-slate-200 shadow-xs hover:border-slate-300 transition-colors"
+      className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 sm:p-5 bg-white rounded-2xl border border-slate-200 shadow-xs hover:border-slate-300 transition-all min-w-0 overflow-hidden"
     >
       {/* Thumbnail + Details */}
-      <div className="flex items-center gap-4 min-w-0 flex-1">
+      <div className="flex items-center gap-4 min-w-0 w-full sm:w-auto flex-1">
         <div
           onClick={() => navigate('/product/:slug', { slug: product.slug })}
-          className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden shrink-0 cursor-pointer"
+          className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden shrink-0 cursor-pointer bg-slate-50 border border-slate-100 flex items-center justify-center"
         >
-          <ProductImage product={product} className="w-full h-full p-2 text-[8px]" />
+          <ProductImage product={product} className="w-full h-full object-cover" />
         </div>
 
         <div className="min-w-0 flex-1">
@@ -36,12 +36,12 @@ export const CartItem: React.FC<CartItemProps> = ({ item }) => {
 
           <h4
             onClick={() => navigate('/product/:slug', { slug: product.slug })}
-            className="text-sm sm:text-base font-bold text-slate-900 truncate hover:text-blue-600 cursor-pointer"
+            className="text-sm sm:text-base font-bold text-slate-900 line-clamp-2 hover:text-blue-600 cursor-pointer break-words leading-snug"
           >
             {product.title}
           </h4>
 
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-500 mt-1">
             Unit Price: <span className="font-semibold text-slate-800">₹{price.toFixed(2)}</span>
             {product.version && ` • Version ${product.version}`}
           </p>
