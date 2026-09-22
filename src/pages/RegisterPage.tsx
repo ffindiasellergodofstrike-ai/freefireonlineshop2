@@ -16,6 +16,7 @@ export const RegisterPage: React.FC = () => {
   const { register, isAuthenticated, currentUser, navigate } = useApp();
   const { showToast } = useToast();
 
+  const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -42,6 +43,11 @@ export const RegisterPage: React.FC = () => {
     e.preventDefault();
     setErrorMessage(null);
 
+    if (!name.trim() || name.trim().length < 2) {
+      setErrorMessage('Please enter your name (at least 2 characters).');
+      return;
+    }
+
     // Strict 10-digit Indian Mobile Number validation
     const indianMobileRegex = /^[6-9][0-9]{9}$/;
     if (!mobile || mobile.length !== 10 || !indianMobileRegex.test(mobile)) {
@@ -67,6 +73,7 @@ export const RegisterPage: React.FC = () => {
     setIsLoading(true);
     try {
       const res = await register({
+        name: name.trim(),
         mobile: mobile.trim(),
         email: email.trim().toLowerCase(),
         password,
@@ -118,6 +125,28 @@ export const RegisterPage: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* 0. Full Name */}
+            <div className="space-y-2">
+              <label className="block text-[10px] sm:text-xs font-bold uppercase tracking-widest text-slate-500">
+                Full Name *
+              </label>
+              <div className="relative min-w-0">
+                <UserIcon className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 shrink-0" />
+                <input
+                  id="reg-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setErrorMessage(null);
+                  }}
+                  placeholder="Your full name"
+                  required
+                  className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all placeholder:text-slate-400 min-h-[44px]"
+                />
+              </div>
+            </div>
 
             {/* 1. Mobile Number */}
             <div className="space-y-2">

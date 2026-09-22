@@ -278,7 +278,7 @@ adminRouter.post('/products/:id/clone', async (req: any, res: Response) => {
 });
 
 // 3. Image Upload Handler (Real Firebase Storage REST API)
-adminRouter.post('/uploads/direct', upload.single('image'), async (req: any, res: Response) => {
+adminRouter.post('/uploads/direct', upload.single('image') as any, async (req: any, res: any) => {
   const requestId = generateRequestId();
   try {
     const file = req.file;

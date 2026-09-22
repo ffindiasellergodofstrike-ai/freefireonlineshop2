@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Plus, Search, Edit3, Trash2, Copy, Eye, Check, X, Upload, Loader2 } from 'lucide-react';
 import { AdminService } from '../../services/AdminService';
+import linknestCover from '../../assets/images/linknest_pro_cover_1790001123696.jpg';
 
 interface AdminProductsViewProps {
   products: any[];
@@ -38,7 +39,7 @@ export const AdminProductsView: React.FC<AdminProductsViewProps> = ({
       compareAtPrice: 999,
       shortDescription: '',
       description: '',
-      image: '/images/branding/LinkNest-Pro.png',
+      image: linknestCover,
       status: 'published',
       stock: 999,
     });
@@ -300,7 +301,7 @@ export const AdminProductsView: React.FC<AdminProductsViewProps> = ({
                 <div className="flex flex-col sm:flex-row gap-4">
                   <div className="relative group w-24 h-24 flex-shrink-0">
                     <img 
-                      src={editingProduct.image || '/images/branding/LinkNest-Pro.png'} 
+                      src={editingProduct.image || linknestCover} 
                       alt="Preview" 
                       className="w-full h-full object-cover rounded-xl border border-slate-200 dark:border-slate-700"
                     />

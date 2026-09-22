@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Clock, FileText, Printer } from 'lucide-react';
+import { ShieldCheck, Clock, FileText } from 'lucide-react';
 import { Breadcrumb } from './Breadcrumb';
 
 interface LegalSection {
@@ -23,10 +23,6 @@ export const LegalContent: React.FC<LegalContentProps> = ({
   sections,
   quickSummary,
 }) => {
-  const handlePrint = () => {
-    window.print();
-  };
-
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <Breadcrumb
@@ -50,15 +46,6 @@ export const LegalContent: React.FC<LegalContentProps> = ({
             <span>Last revised: {lastUpdated}</span>
           </div>
         </div>
-
-        <button
-          id="print-legal-doc-btn"
-          onClick={handlePrint}
-          className="inline-flex items-center gap-2 self-start sm:self-center px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-colors border border-slate-200"
-        >
-          <Printer className="w-4 h-4" />
-          <span>Print Document</span>
-        </button>
       </div>
 
       {/* Quick Summary Bento if provided */}

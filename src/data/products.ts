@@ -27,6 +27,8 @@ export const CATEGORIES: Category[] = [
   },
 ];
 
+const linknestCover = new URL('../assets/images/linknest_pro_cover_1790001123696.jpg', import.meta.url).href;
+
 export const PRODUCTS: Product[] = [
   {
     id: 'linknest-pro',
@@ -43,9 +45,9 @@ export const PRODUCTS: Product[] = [
     originalPrice: 999,
     rating: 4.9,
     reviewCount: 42,
-    image: '/images/branding/LinkNest-Pro.png',
+    image: linknestCover,
     gallery: [
-      '/images/branding/LinkNest-Pro.png'
+      linknestCover
     ],
     fileFormat: 'HTML, CSS, JS (ZIP Archive)',
     fileSize: '6.7 KB',

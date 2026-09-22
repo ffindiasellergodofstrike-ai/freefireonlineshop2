@@ -145,10 +145,27 @@ export class AuthServiceServer {
       };
     }
 
-    const randomHex = crypto.randomBytes(4).toString('hex').toUpperCase();
-    const userId = `USER_${Date.now().toString(36).toUpperCase()}_${randomHex}`;
-    const cleanUsername = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || `user${cleanMobile.slice(-4)}`;
     const displayName = name && name.trim().length >= 2 ? name.trim() : cleanEmail.split('@')[0];
+
+    // Normalize name for user ID (keep Hindi or English alphanumeric characters, lowercased, remove spaces/punctuation)
+    const cleanNameForId = displayName
+      .replace(/[\s\W_]+/g, '')
+      .toLowerCase();
+
+    // First 4 digits of the mobile number
+    const frontFour = cleanMobile.slice(0, 4);
+
+    const baseUserId = `${cleanNameForId}${frontFour}`;
+    let userId = baseUserId;
+
+    // Check if user ID already exists to prevent collisions
+    const isCollision = await FirebaseRtdb.get(`users/${userId}`);
+    if (isCollision) {
+      const shortSuffix = crypto.randomBytes(2).toString('hex').toLowerCase();
+      userId = `${baseUserId}_${shortSuffix}`;
+    }
+
+    const cleanUsername = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || `user${cleanMobile.slice(-4)}`;
 
     const passwordHash = await this.hashPassword(password);
 
