@@ -31,6 +31,26 @@ import { DownloadService } from '../services/DownloadService';
 import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
 
+const formatISTDate = (isoString?: string): string => {
+  if (!isoString) return '2026';
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString;
+    
+    return date.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch (err) {
+    return isoString;
+  }
+};
+
 export const AccountPage: React.FC = () => {
   const {
     currentUser,
@@ -231,7 +251,7 @@ export const AccountPage: React.FC = () => {
             )}
             <p className="text-[10px] sm:text-[11px] text-slate-400 font-mono mt-1 flex items-center gap-1.5 min-w-0">
               <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
-              <span className="truncate">Member since {currentUser.createdAt || '2026'}</span>
+              <span className="truncate">Member since {formatISTDate(currentUser.createdAt)}</span>
             </p>
           </div>
         </div>
@@ -320,7 +340,7 @@ export const AccountPage: React.FC = () => {
                     <h3 className="text-sm sm:text-base font-black text-slate-900 font-mono truncate">
                       {order.orderNumber}
                     </h3>
-                    <span className="text-[10px] sm:text-xs text-slate-500 block mt-0.5">{order.createdAt}</span>
+                    <span className="text-[10px] sm:text-xs text-slate-500 block mt-0.5">{formatISTDate(order.createdAt)}</span>
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">

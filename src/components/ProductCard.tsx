@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingCart, Eye, Sparkles, Check, Download, FileCode, Wrench, Video, FolderArchive, Layers } from 'lucide-react';
+import { ShoppingCart, Eye, Sparkles, Check, Download, FileCode, Wrench, Video, FolderArchive, Layers, Zap } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Product, ProductType } from '../types';
 import { ProductImage } from './ProductImage';
@@ -52,6 +52,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 }) => {
   const { navigate, addToCart, cartItems } = useApp();
   const isInCart = cartItems.some((i) => i.product.id === product.id);
+  const discountPercent = product.originalPrice && product.originalPrice > product.price
+    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+    : 0;
 
   const handleCardClick = () => {
     navigate('/product/:slug', { slug: product.slug });
@@ -72,37 +75,46 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     >
       {/* Product Visual Area */}
       <div className={`relative ${isList ? 'md:w-72 shrink-0' : 'w-full'}`}>
-        <div className="p-3 pb-0">
-          <div className="rounded-xl overflow-hidden bg-slate-50 border border-slate-100 shadow-sm">
-            <ProductImage product={product} className="h-44 sm:h-48 w-full group-hover:scale-105 transition-transform duration-700 ease-out" />
+        <div className="p-2 sm:p-3 pb-0">
+          <div className="rounded-xl overflow-hidden bg-slate-50 border border-slate-100 shadow-sm relative">
+            <ProductImage product={product} className="w-full aspect-[16/9] group-hover:scale-105 transition-transform duration-700 ease-out" />
+            
+            {/* Floating Discount Badge - TOP-LEFT */}
+            {discountPercent > 0 && (
+              <div className="absolute top-2 left-2 z-10">
+                <span className="text-[9px] font-black px-2 py-0.5 sm:py-1 rounded bg-red-500 text-white shadow-sm tracking-wider uppercase">
+                  {discountPercent}% OFF
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Floating Wishlist Button */}
-        <div className="absolute top-6 right-6 z-10">
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-10">
           <WishlistButton product={product} size="sm" />
         </div>
       </div>
 
       {/* Content Area */}
-      <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
+      <div className="p-3 sm:p-5 flex-1 flex flex-col justify-between">
         <div>
           {/* Title */}
-          <h3 className="font-bold text-slate-900 text-base sm:text-lg leading-snug group-hover:text-blue-600 transition-colors line-clamp-2 mb-1.5">
+          <h3 className="font-bold text-slate-900 text-xs sm:text-sm md:text-base lg:text-lg leading-snug group-hover:text-blue-600 transition-colors line-clamp-2 mb-1 sm:mb-1.5">
             {product.title}
           </h3>
 
           {/* Short Description */}
-          <p className="text-xs text-slate-500 line-clamp-2 mb-4 leading-relaxed font-medium">
+          <p className="text-[10px] sm:text-xs text-slate-500 line-clamp-2 mb-2 sm:mb-4 leading-relaxed font-medium">
             {product.shortDescription}
           </p>
 
           {/* Tags Chips */}
-          <div className="flex flex-wrap gap-1.5 mb-5">
-            {product.tags.slice(0, 3).map((tag, idx) => (
+          <div className="flex flex-wrap gap-1 mb-3 sm:mb-5">
+            {product.tags.slice(0, 2).map((tag, idx) => (
               <span
                 key={idx}
-                className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-100/80 text-slate-500 font-bold uppercase tracking-wide border border-slate-200/50"
+                className="text-[8px] sm:text-[9.5px] px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase tracking-wider border border-slate-200/40 shrink-0 whitespace-nowrap"
               >
                 {tag}
               </span>
@@ -111,54 +123,29 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         </div>
 
         {/* Footer: Price & Actions */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
-          <div>
-            <Price price={product.price} originalPrice={product.originalPrice} size="md" />
-            <p className="text-[11px] text-slate-600 mt-0.5">
-              Instant Access Digital Delivery
-            </p>
+        <div className="pt-2 sm:pt-3 border-t border-slate-100 flex flex-col gap-2">
+          {/* Price line */}
+          <div className="flex items-center justify-between gap-1">
+            <Price price={product.price} originalPrice={product.originalPrice} size="sm" showDiscountBadge={false} />
+            <span className="text-[9px] text-slate-400 font-medium whitespace-nowrap">Digital Delivery</span>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <button
-              id={`view-btn-${product.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate('/product/:slug', { slug: product.slug });
-              }}
-              className="p-2 sm:px-3 sm:py-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 text-xs font-semibold transition-colors flex items-center gap-1"
-              aria-label={`View details for ${product.title}`}
-            >
-              <Eye className="w-4 h-4" />
-              <span className="hidden sm:inline">Details</span>
-            </button>
-
-            <button
-              id={`add-cart-btn-${product.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
+          {/* Centered Buy Now Button */}
+          <button
+            id={`buy-btn-${product.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isInCart) {
                 addToCart(product, 'Standard', 1);
-              }}
-              className={`p-2 sm:px-3.5 sm:py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
-                isInCart
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
-              }`}
-              aria-label={`Add ${product.title} to shopping cart`}
-            >
-              {isInCart ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span className="hidden sm:inline">Added</span>
-                </>
-              ) : (
-                <>
-                  <ShoppingCart className="w-4 h-4" />
-                  <span className="hidden sm:inline">Add to Cart</span>
-                </>
-              )}
-            </button>
-          </div>
+              }
+              navigate('/checkout');
+            }}
+            className="w-full py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95 bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/10"
+            aria-label={`Buy ${product.title} now`}
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+            <span>Buy Now</span>
+          </button>
         </div>
       </div>
     </motion.div>

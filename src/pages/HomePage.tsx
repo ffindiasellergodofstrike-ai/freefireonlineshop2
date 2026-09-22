@@ -85,8 +85,8 @@ export const HomePage: React.FC = () => {
         </div>
 
         {products.length > 0 ? (
-          /* 2 items per row: left and right */
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          /* 2 items per row */
+          <div className="grid grid-cols-2 gap-3 sm:gap-6">
             {products.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
@@ -98,7 +98,7 @@ export const HomePage: React.FC = () => {
             </div>
             <h3 className="text-base font-bold text-slate-900">No Products Listed Yet</h3>
             <p className="text-slate-500 text-sm max-w-md mx-auto">
-              Jab aap products add karenge, toh wo yahan Homepage par 2-column layout (left & right) mein show honge.
+              Jab aap products add karenge, toh wo yahan Homepage par 2-column layout mein show honge.
             </p>
           </div>
         )}
