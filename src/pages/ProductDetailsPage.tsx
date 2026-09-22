@@ -424,21 +424,23 @@ export const ProductDetailsPage: React.FC = () => {
           onClose={() => setIsDemoModalOpen(false)}
           title={product.previewUrl ? `Live Demo: ${product.title}` : `Overview: ${product.title}`}
           maxWidth={product.previewUrl ? '6xl' : 'lg'}
+          mobileFullscreen={Boolean(product.previewUrl)}
         >
           {product.previewUrl ? (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:px-4 sm:py-3">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Interactive product demo</p>
-                  <p className="mt-0.5 text-xs text-slate-500">Preview environment • actions here do not affect your purchase</p>
+                  <p className="mt-0.5 text-[11px] sm:text-xs text-slate-500">Preview environment • actions here do not affect your purchase</p>
                 </div>
-                <div className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-xs ring-1 ring-slate-200">
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1.5 sm:px-3 text-[10px] sm:text-[11px] font-semibold text-slate-600 shadow-xs ring-1 ring-slate-200">
                   <Maximize2 className="h-3.5 w-3.5" />
-                  Responsive preview
+                  <span className="sm:hidden">Mobile</span>
+                  <span className="hidden sm:inline">Responsive preview</span>
                 </div>
               </div>
 
-              <div className="relative h-[70dvh] min-h-[460px] overflow-hidden rounded-2xl border border-slate-300 bg-slate-950 shadow-inner">
+              <div className="relative h-[clamp(20rem,58dvh,35rem)] sm:h-[70dvh] sm:min-h-[460px] overflow-hidden rounded-xl sm:rounded-2xl border border-slate-300 bg-slate-950 shadow-inner">
                 {isPreviewLoading && (
                   <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950 text-white">
                     <div className="flex items-center gap-3 text-sm font-semibold">
@@ -458,16 +460,16 @@ export const ProductDetailsPage: React.FC = () => {
                 />
 
                 <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden="true">
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-20 whitespace-nowrap text-4xl font-black uppercase tracking-[0.25em] text-slate-900/8 sm:text-6xl">
+                  <div className="absolute left-1/2 top-1/2 w-[88%] -translate-x-1/2 -translate-y-1/2 -rotate-20 text-center text-2xl font-black uppercase leading-tight tracking-[0.12em] text-slate-900/8 sm:w-auto sm:whitespace-nowrap sm:text-6xl sm:tracking-[0.25em]">
                     {product.title} • Preview
                   </div>
-                  <div className="absolute bottom-3 right-3 rounded-lg border border-white/30 bg-slate-950/70 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-lg backdrop-blur-sm">
+                  <div className="absolute bottom-2 right-2 rounded-md border border-white/30 bg-slate-950/70 px-2 py-1 text-[8px] font-bold uppercase tracking-[0.12em] text-white shadow-lg backdrop-blur-sm sm:bottom-3 sm:right-3 sm:rounded-lg sm:px-3 sm:py-1.5 sm:text-[10px] sm:tracking-widest">
                     Demo Preview • Not for redistribution
                   </div>
                 </div>
               </div>
 
-              <p className="text-center text-[11px] leading-relaxed text-slate-500">
+              <p className="px-1 text-center text-[10px] sm:text-[11px] leading-relaxed text-slate-500">
                 This demo runs inside a restricted preview frame. Some sign-in, payment, download, or new-window actions may be disabled.
               </p>
             </div>
