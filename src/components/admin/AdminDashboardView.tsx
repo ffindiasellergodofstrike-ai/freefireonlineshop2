@@ -125,7 +125,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ stats, r
                 <div className="text-right">
                   <span className="text-sm font-bold text-slate-900 dark:text-white">₹{o.total}</span>
                   <div className={`text-xs font-semibold px-2 py-0.5 rounded-full inline-block mt-0.5 ${
-                    o.paymentStatus === 'PAID' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' : 'bg-amber-100 text-amber-700'
+                    o.paymentStatus?.toUpperCase() === 'PAID' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' : 'bg-amber-100 text-amber-700'
                   }`}>
                     {o.paymentStatus || 'PENDING'}
                   </div>

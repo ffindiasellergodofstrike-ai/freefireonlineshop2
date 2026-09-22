@@ -102,7 +102,7 @@ class OrderServiceImpl {
   public getDownloads(): (OrderItem & { product: Product; quantity?: number })[] {
     const map = new Map<string, OrderItem & { product: Product; quantity?: number }>();
     this.orders
-      .filter((o) => o.paymentStatus === 'PAID')
+      .filter((o) => o.paymentStatus?.toUpperCase() === 'PAID')
       .forEach((o) => {
         o.items.forEach((item) => {
           map.set(item.productId, item);
@@ -115,7 +115,7 @@ class OrderServiceImpl {
     const userOrders = this.getOrdersForUser(email);
     const map = new Map<string, OrderItem & { product: Product; quantity?: number }>();
     userOrders
-      .filter((o) => o.paymentStatus === 'PAID')
+      .filter((o) => o.paymentStatus?.toUpperCase() === 'PAID')
       .forEach((o) => {
         o.items.forEach((item) => {
           map.set(item.productId, item);

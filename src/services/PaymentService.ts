@@ -44,7 +44,13 @@ export class PaymentService {
   /**
    * Initiates payment with Easebuzz via secure backend API
    */
-  static async initiateEasebuzzPayment(orderId: string, agreeTerms: boolean): Promise<{ success: boolean; accessKey?: string; message?: string }> {
+  static async initiateEasebuzzPayment(orderId: string, agreeTerms: boolean): Promise<{
+    success: boolean;
+    accessKey?: string;
+    merchantKey?: string;
+    environment?: 'test' | 'prod';
+    message?: string;
+  }> {
     try {
       const res = await fetch('/api/payments/easebuzz/initiate', {
         method: 'POST',

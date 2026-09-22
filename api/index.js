@@ -1,6 +1,6 @@
 // server/app.ts
 import express from "express";
-import crypto2 from "crypto";
+import crypto3 from "crypto";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import cors from "cors";
@@ -101,8 +101,8 @@ var FirebaseRtdb = class {
   static get baseUrl() {
     return getRtdbBaseUrl();
   }
-  static getUrl(path3) {
-    const cleanPath = path3.replace(/^\/+|\/+$/g, "");
+  static getUrl(path2) {
+    const cleanPath = path2.replace(/^\/+|\/+$/g, "");
     const auth = getRtdbAuth();
     const queryParams = auth ? `?auth=${encodeURIComponent(auth)}` : "";
     return `${this.baseUrl}/${cleanPath}.json${queryParams}`;
@@ -142,9 +142,9 @@ var FirebaseRtdb = class {
   /**
    * Generic GET from RTDB with local store fallback
    */
-  static async get(path3) {
+  static async get(path2) {
     try {
-      const url = this.getUrl(path3);
+      const url = this.getUrl(path2);
       const res = await fetch(url, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
@@ -153,24 +153,24 @@ var FirebaseRtdb = class {
       if (res.ok) {
         const data = await res.json();
         if (data !== null) {
-          setPathValue(localStore, path3, data);
+          setPathValue(localStore, path2, data);
           saveLocalStore();
         }
         return data;
       }
     } catch (err) {
     }
-    const cached = getPathValue(localStore, path3);
+    const cached = getPathValue(localStore, path2);
     return cached;
   }
   /**
    * Generic PUT to RTDB with local store backup
    */
-  static async set(path3, data) {
-    setPathValue(localStore, path3, data);
+  static async set(path2, data) {
+    setPathValue(localStore, path2, data);
     saveLocalStore();
     try {
-      const url = this.getUrl(path3);
+      const url = this.getUrl(path2);
       const res = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -179,12 +179,12 @@ var FirebaseRtdb = class {
       });
       if (!res.ok) {
         const errorText = await res.text();
-        console.warn(`[Firebase RTDB Remote Warning] ${path3} returned HTTP ${res.status}: ${errorText}. Account data saved in local persistent store.`);
+        console.warn(`[Firebase RTDB Remote Warning] ${path2} returned HTTP ${res.status}: ${errorText}. Account data saved in local persistent store.`);
       } else {
-        console.log(`[Firebase RTDB Remote Success] Successfully synced ${path3} to Firebase Realtime Database.`);
+        console.log(`[Firebase RTDB Remote Success] Successfully synced ${path2} to Firebase Realtime Database.`);
       }
     } catch (err) {
-      console.warn(`[Firebase RTDB Remote Offline] ${path3}: ${err?.message}. Account data saved in local persistent store.`);
+      console.warn(`[Firebase RTDB Remote Offline] ${path2}: ${err?.message}. Account data saved in local persistent store.`);
     }
     return data;
   }
@@ -213,11 +213,11 @@ var FirebaseRtdb = class {
   /**
    * Generic PATCH to RTDB
    */
-  static async update(path3, data) {
-    const updated = updatePathValue(localStore, path3, data);
+  static async update(path2, data) {
+    const updated = updatePathValue(localStore, path2, data);
     saveLocalStore();
     try {
-      const url = this.getUrl(path3);
+      const url = this.getUrl(path2);
       await fetch(url, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -231,11 +231,11 @@ var FirebaseRtdb = class {
   /**
    * Generic DELETE from RTDB
    */
-  static async delete(path3) {
-    deletePathValue(localStore, path3);
+  static async delete(path2) {
+    deletePathValue(localStore, path2);
     saveLocalStore();
     try {
-      const url = this.getUrl(path3);
+      const url = this.getUrl(path2);
       const res = await fetch(url, {
         method: "DELETE",
         signal: AbortSignal.timeout(5e3)
@@ -864,23 +864,15 @@ var AuditLogger = class {
 };
 
 // server/secureFiles.ts
-import fs2 from "fs";
-import path2 from "path";
-var PROTECTED_DIR = path2.join(process.cwd(), "protected_files");
-try {
-  if (!fs2.existsSync(PROTECTED_DIR)) {
-    fs2.mkdirSync(PROTECTED_DIR, { recursive: true });
-  }
-} catch (err) {
-  console.warn("[SecureFiles] Could not ensure protected_files directory exists:", err);
-}
+import crypto2 from "crypto";
+import { Readable } from "stream";
 var downloadTokens = /* @__PURE__ */ new Map();
 var SecureFileManager = class {
   /**
    * Generates a short-lived (15 minute) single-use download token
    */
   static async generateToken(params) {
-    const tokenId = `DL-TOK-${Date.now()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+    const tokenId = `DL-TOK-${crypto2.randomBytes(24).toString("base64url")}`;
     const expiresAt = Date.now() + 15 * 60 * 1e3;
     const reqId = params.requestId || generateRequestId();
     const data = {
@@ -930,64 +922,60 @@ var SecureFileManager = class {
     await FirebaseRtdb.set(`downloadTokens/${tokenId}`, data);
     return { valid: true, tokenData: data };
   }
-  /**
-   * Ensures secure physical file exists for product, using real uploaded zip package
-   */
-  static ensureProductFileExists(productId) {
-    const zipPaths = [
-      path2.join(process.cwd(), "Api", "Files", "LinkNest-Pro-Creator-Commerce-Kit.zip"),
-      path2.join(process.cwd(), "protected_files", "LinkNest-Pro-Creator-Commerce-Kit.zip"),
-      path2.join(process.cwd(), "protected_files", "linknest-pro-template.zip"),
-      path2.join(process.cwd(), "protected_files", `${productId}-template.zip`)
-    ];
-    for (const p of zipPaths) {
-      if (fs2.existsSync(p)) {
-        return p;
-      }
-    }
-    const apiFilesDir = path2.join(process.cwd(), "Api", "Files");
-    if (fs2.existsSync(apiFilesDir)) {
-      const files = fs2.readdirSync(apiFilesDir);
-      const zip = files.find((f) => f.toLowerCase().endsWith(".zip"));
-      if (zip) return path2.join(apiFilesDir, zip);
-    }
-    const fileName = `${productId}-template.zip`;
-    const filePath = path2.join(PROTECTED_DIR, fileName);
-    if (!fs2.existsSync(filePath)) {
-      const content = `LinkNest Pro \u2014 Personal Bio & Digital Store Website Template
-========================================================================
-Official Digital Delivery & Commercial License Certificate
-Product ID: ${productId}
-Generated: ${(/* @__PURE__ */ new Date()).toISOString()}
-
-INCLUDED ASSETS:
-- index.html (Responsive Bio Link & Store Template)
-- styles.css (Tailwind & CSS Theme Config)
-- app.js (Interactive UI & Payment Button Logic)
-- README.md (Setup & Deployment Instructions)
-- LICENSE.pdf (Commercial Usage Rights)
-
-Thank you for your purchase!
-`;
-      fs2.writeFileSync(filePath, content, "utf-8");
-    }
-    return filePath;
+  static getProductDownloadEnvironmentKey(productId) {
+    const normalizedId = productId.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+    return `PRODUCT_DOWNLOAD_URL_${normalizedId}`;
   }
   /**
-   * Streams file securely to HTTP response
+   * Opens a server-only object-storage URL. The URL is configured in Vercel and
+   * is never returned to the browser.
    */
-  static streamFileToResponse(filePath, filename, res) {
-    const stat = fs2.statSync(filePath);
-    res.writeHead(200, {
+  static async fetchProductFile(productId) {
+    const environmentKey = this.getProductDownloadEnvironmentKey(productId);
+    const configuredUrl = process.env[environmentKey] || process.env.PRODUCT_DOWNLOAD_URL;
+    if (!configuredUrl) {
+      throw new Error(`Download source is not configured. Set ${environmentKey} in Vercel.`);
+    }
+    let sourceUrl;
+    try {
+      sourceUrl = new URL(configuredUrl);
+    } catch {
+      throw new Error(`${environmentKey} must contain a valid HTTPS URL.`);
+    }
+    if (sourceUrl.protocol !== "https:") {
+      throw new Error(`${environmentKey} must use HTTPS.`);
+    }
+    const upstream = await fetch(sourceUrl, {
+      method: "GET",
+      redirect: "follow",
+      signal: AbortSignal.timeout(3e4)
+    });
+    if (!upstream.ok || !upstream.body) {
+      throw new Error(`Configured download source returned HTTP ${upstream.status}.`);
+    }
+    return upstream;
+  }
+  /**
+   * Proxies the configured ZIP through the authenticated API response.
+   */
+  static streamProductFileToResponse(upstream, filename, res) {
+    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const contentLength = upstream.headers.get("content-length");
+    const headers = {
       "Content-Type": "application/zip",
-      "Content-Length": stat.size,
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="${safeFilename}"`,
       "Cache-Control": "private, no-store, no-cache, must-revalidate",
       "Pragma": "no-cache",
-      "Expires": "0"
-    });
-    const readStream = fs2.createReadStream(filePath);
-    readStream.pipe(res);
+      "Expires": "0",
+      "X-Content-Type-Options": "nosniff"
+    };
+    if (contentLength && /^\d+$/.test(contentLength)) {
+      headers["Content-Length"] = contentLength;
+    }
+    res.writeHead(200, headers);
+    const source = Readable.fromWeb(upstream.body);
+    source.on("error", (error) => res.destroy(error));
+    source.pipe(res);
   }
 };
 
@@ -1189,14 +1177,14 @@ adminRouter.get("/dashboard/stats", async (req, res) => {
     orders.forEach((o) => {
       const amount = o.total || 0;
       const orderTime = new Date(o.date || o.createdAt || 0).getTime();
-      const isPaid = o.paymentStatus === "PAID" || o.paymentStatus === "paid";
+      const isPaid = String(o.paymentStatus).toUpperCase() === "PAID";
       if (isPaid) {
         totalRevenue += amount;
         if (now - orderTime <= oneDay) revenueToday += amount;
         if (now - orderTime <= sevenDays) revenue7d += amount;
         if (now - orderTime <= thirtyDays) revenue30d += amount;
         paidCount++;
-      } else if (o.paymentStatus === "FAILED" || o.paymentStatus === "failed") {
+      } else if (String(o.paymentStatus).toUpperCase() === "FAILED") {
         failedCount++;
       } else {
         pendingCount++;
@@ -1446,7 +1434,10 @@ adminRouter.get("/customers", async (req, res) => {
     const orders = await FirebaseRtdb.getAllGlobalOrders();
     const customersWithMetrics = users.map((u) => {
       const userOrders = orders.filter((o) => o.customerEmail?.toLowerCase() === u.email?.toLowerCase());
-      const totalSpent = userOrders.reduce((sum, o) => sum + (o.paymentStatus === "PAID" ? o.total : 0), 0);
+      const totalSpent = userOrders.reduce(
+        (sum, o) => sum + (String(o.paymentStatus).toUpperCase() === "PAID" ? o.total : 0),
+        0
+      );
       return {
         ...u,
         ordersCount: userOrders.length,
@@ -1623,14 +1614,14 @@ var EASEBUZZ_ENV = process.env.EASEBUZZ_ENV || "test";
 var CRON_SECRET = process.env.CRON_SECRET || "";
 var EASEBUZZ_BASE_URL = EASEBUZZ_ENV === "prod" ? "https://pay.easebuzz.in" : "https://testpay.easebuzz.in";
 var easebuzzHash = (data) => {
-  return crypto2.createHash("sha512").update(data).digest("hex");
+  return crypto3.createHash("sha512").update(data).digest("hex");
 };
 var verifyEasebuzzHash = (params, salt) => {
   const { hash, status, udf10, udf9, udf8, udf7, udf6, udf5, udf4, udf3, udf2, udf1, email, firstname, productinfo, amount, txnid, key } = params;
   const hashString = `${salt}|${status}|${udf10 || ""}|${udf9 || ""}|${udf8 || ""}|${udf7 || ""}|${udf6 || ""}|${udf5 || ""}|${udf4 || ""}|${udf3 || ""}|${udf2 || ""}|${udf1 || ""}|${email || ""}|${firstname || ""}|${productinfo || ""}|${amount || ""}|${txnid || ""}|${key || ""}`;
   const calculatedHash = easebuzzHash(hashString);
   try {
-    return crypto2.timingSafeEqual(Buffer.from(hash || ""), Buffer.from(calculatedHash));
+    return crypto3.timingSafeEqual(Buffer.from(hash || ""), Buffer.from(calculatedHash));
   } catch {
     return false;
   }
@@ -1978,8 +1969,8 @@ var handleOrderCreation = async (req, res) => {
       productId: primaryProductId,
       productNameSnapshot: primaryProductName,
       status: "PENDING",
-      paymentStatus: "pending",
-      orderStatus: "pending",
+      paymentStatus: "PENDING",
+      orderStatus: "PENDING",
       deliveryStatus: "PENDING",
       downloadStatus: "UNAVAILABLE",
       amount: calculatedTotal,
@@ -2023,16 +2014,22 @@ app.post("/api/orders/create", requireAuth, handleOrderCreation);
 app.post("/api/user/orders", requireAuth, handleOrderCreation);
 app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
   try {
-    const { orderId } = req.body;
+    const { orderId, agreeTerms } = req.body;
     const userId = req.userId;
+    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+      return res.status(503).json({ success: false, message: "Easebuzz payment gateway is not configured yet." });
+    }
     if (!orderId) {
       return res.status(400).json({ success: false, message: "Order ID is required." });
+    }
+    if (agreeTerms !== true) {
+      return res.status(400).json({ success: false, message: "You must accept the terms before starting payment." });
     }
     const order = await FirebaseRtdb.getUserOrderById(userId, orderId);
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found." });
     }
-    if (order.paymentStatus === "paid" || order.paymentStatus === "PAID") {
+    if (String(order.paymentStatus).toUpperCase() === "PAID") {
       return res.status(400).json({ success: false, message: "Order is already paid." });
     }
     const phone = order.customer?.phone || "";
@@ -2072,9 +2069,14 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
     if (ebzData.status === 1) {
       order.easebuzzAccessKey = ebzData.data;
       order.status = "PENDING_PAYMENT";
-      order.paymentStatus = "pending";
+      order.paymentStatus = "PENDING";
       await FirebaseRtdb.saveGlobalOrder(order);
-      res.json({ success: true, accessKey: ebzData.data });
+      res.json({
+        success: true,
+        accessKey: ebzData.data,
+        merchantKey: EASEBUZZ_KEY,
+        environment: EASEBUZZ_ENV
+      });
     } else {
       res.status(400).json({ success: false, message: ebzData.data || "Failed to initiate Easebuzz payment." });
     }
@@ -2083,11 +2085,14 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
   }
 });
 async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
+  if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+    return { success: false, message: "Easebuzz payment gateway is not configured yet." };
+  }
   const globalOrder = await FirebaseRtdb.getGlobalOrder(orderIdOrTxnId);
   if (!globalOrder) {
     return { success: false, message: "Order not found" };
   }
-  if (globalOrder.paymentStatus === "paid" || globalOrder.paymentStatus === "PAID") {
+  if (String(globalOrder.paymentStatus).toUpperCase() === "PAID") {
     return { success: true, status: "PAID", orderId: globalOrder.id, message: "Already paid" };
   }
   const txnid = globalOrder.orderNumber || globalOrder.id;
@@ -2115,8 +2120,8 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
   if (!verifyData.status || !verifyData.data || verifyData.data.status !== "success") {
     const errorReason = verifyData.data?.error_Message || verifyData.data?.status || "Verification failed";
     globalOrder.status = "FAILED";
-    globalOrder.paymentStatus = "failed";
-    globalOrder.orderStatus = "failed";
+    globalOrder.paymentStatus = "FAILED";
+    globalOrder.orderStatus = "FAILED";
     globalOrder.failureReason = errorReason;
     globalOrder.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
     await FirebaseRtdb.saveGlobalOrder(globalOrder);
@@ -2131,8 +2136,8 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const userId = globalOrder.userId;
   globalOrder.status = "PAID";
-  globalOrder.paymentStatus = "paid";
-  globalOrder.orderStatus = "paid";
+  globalOrder.paymentStatus = "PAID";
+  globalOrder.orderStatus = "PAID";
   globalOrder.deliveryStatus = "DELIVERED";
   globalOrder.downloadStatus = "AVAILABLE";
   globalOrder.transactionId = easebuzzId;
@@ -2186,6 +2191,9 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
 }
 app.post("/api/payments/easebuzz/callback", async (req, res) => {
   try {
+    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+      return res.status(503).send("Easebuzz payment gateway is not configured yet.");
+    }
     const params = req.body;
     if (!verifyEasebuzzHash(params, EASEBUZZ_SALT)) {
       return res.status(400).send("Invalid signature");
@@ -2198,8 +2206,8 @@ app.post("/api/payments/easebuzz/callback", async (req, res) => {
     }
     if (status !== "success") {
       globalOrder.status = "FAILED";
-      globalOrder.paymentStatus = "failed";
-      globalOrder.orderStatus = "failed";
+      globalOrder.paymentStatus = "FAILED";
+      globalOrder.orderStatus = "FAILED";
       globalOrder.failureReason = params.error_Message || "Payment failed on gateway";
       globalOrder.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
       await FirebaseRtdb.saveGlobalOrder(globalOrder);
@@ -2254,7 +2262,7 @@ app.post("/api/payments/easebuzz/reconcile-cron", async (req, res) => {
     const allOrders = await FirebaseRtdb.getAllGlobalOrders();
     const tenMinsAgo = Date.now() - 10 * 60 * 1e3;
     const pendingOrders = allOrders.filter(
-      (o) => (o.status === "PENDING_PAYMENT" || o.paymentStatus === "pending") && new Date(o.createdAt || o.date || 0).getTime() < tenMinsAgo
+      (o) => (o.status === "PENDING_PAYMENT" || String(o.paymentStatus).toUpperCase() === "PENDING") && new Date(o.createdAt || o.date || 0).getTime() < tenMinsAgo
     );
     const results = [];
     for (const ord of pendingOrders) {
@@ -2278,7 +2286,7 @@ app.post("/api/downloads/:productId/token", requireAuth, async (req, res) => {
     if (purchase.downloadCount >= (purchase.downloadLimit || 10)) {
       return res.status(403).json({ success: false, message: "Download limit has been reached for this product license." });
     }
-    const tokenId = `DL-TOK-${Date.now()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+    const tokenId = `DL-TOK-${crypto3.randomBytes(24).toString("base64url")}`;
     const expiresAt = Date.now() + 15 * 60 * 1e3;
     const tokenData = {
       tokenId,
@@ -2318,24 +2326,31 @@ app.get("/api/downloads/stream", async (req, res) => {
     if (tokenData.used) {
       return res.status(403).send("Download link has already been used.");
     }
+    const purchases = await FirebaseRtdb.getUserPurchases(tokenData.userId);
+    const purchase = purchases.find(
+      (p) => (p.purchaseId === tokenData.purchaseId || p.productId === tokenData.productId) && p.accessStatus === "active"
+    );
+    if (!purchase) {
+      return res.status(403).send("Active purchase license not found for this download.");
+    }
+    const currentCount = purchase.downloadCount || 0;
+    const limit = purchase.downloadLimit || 10;
+    if (currentCount >= limit) {
+      return res.status(403).send("Download limit has been reached for this license.");
+    }
+    const upstream = await SecureFileManager.fetchProductFile(tokenData.productId);
     tokenData.used = true;
     await FirebaseRtdb.set(`downloadTokens/${token}`, tokenData);
-    const purchases = await FirebaseRtdb.getUserPurchases(tokenData.userId);
-    const purchase = purchases.find((p) => p.purchaseId === tokenData.purchaseId || p.productId === tokenData.productId);
-    if (purchase) {
-      const currentCount = purchase.downloadCount || 0;
-      const limit = purchase.downloadLimit || 10;
-      if (currentCount >= limit) {
-        return res.status(403).send("Download limit has been reached for this license.");
-      }
-      purchase.downloadCount = currentCount + 1;
-      await FirebaseRtdb.savePurchase(tokenData.userId, purchase.purchaseId, purchase);
-    }
-    const filePath = SecureFileManager.ensureProductFileExists(tokenData.productId);
+    purchase.downloadCount = currentCount + 1;
+    await FirebaseRtdb.savePurchase(tokenData.userId, purchase.purchaseId, purchase);
     const filename = `${tokenData.productId}-package.zip`;
-    SecureFileManager.streamFileToResponse(filePath, filename, res);
+    SecureFileManager.streamProductFileToResponse(upstream, filename, res);
   } catch (err) {
-    res.status(500).send("Internal server error during download.");
+    if (!res.headersSent) {
+      const isConfigurationError = String(err?.message || "").includes("PRODUCT_DOWNLOAD_URL");
+      return res.status(isConfigurationError ? 503 : 502).send(isConfigurationError ? "Product download is not configured yet." : "Product download is temporarily unavailable.");
+    }
+    res.destroy(err);
   }
 });
 app.get("/api/admin/audit-logs", requireAdmin, async (req, res) => {
