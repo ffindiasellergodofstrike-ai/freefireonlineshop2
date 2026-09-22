@@ -325,11 +325,11 @@ export const AccountPage: React.FC = () => {
 
                   <div className="flex items-center gap-3 shrink-0">
                     <span className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black border tracking-wider ${
-                      order.paymentStatus === 'PAID'
+                      order.paymentStatus?.toUpperCase() === 'PAID'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         : 'bg-amber-50 text-amber-700 border-amber-200'
                     }`}>
-                      {order.paymentStatus === 'PAID' ? 'PAID' : order.status.toUpperCase()}
+                      {order.paymentStatus?.toUpperCase() === 'PAID' ? 'PAID' : order.status.toUpperCase()}
                     </span>
                     <button
                       onClick={() => setViewingOrder(order)}

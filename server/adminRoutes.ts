@@ -102,7 +102,7 @@ adminRouter.get('/dashboard/stats', async (req: any, res: Response) => {
     orders.forEach((o: any) => {
       const amount = o.total || 0;
       const orderTime = new Date(o.date || o.createdAt || 0).getTime();
-      const isPaid = o.paymentStatus === 'PAID' || o.paymentStatus === 'paid';
+      const isPaid = String(o.paymentStatus).toUpperCase() === 'PAID';
 
       if (isPaid) {
         totalRevenue += amount;
@@ -110,7 +110,7 @@ adminRouter.get('/dashboard/stats', async (req: any, res: Response) => {
         if (now - orderTime <= sevenDays) revenue7d += amount;
         if (now - orderTime <= thirtyDays) revenue30d += amount;
         paidCount++;
-      } else if (o.paymentStatus === 'FAILED' || o.paymentStatus === 'failed') {
+      } else if (String(o.paymentStatus).toUpperCase() === 'FAILED') {
         failedCount++;
       } else {
         pendingCount++;
@@ -403,7 +403,10 @@ adminRouter.get('/customers', async (req: any, res: Response) => {
 
     const customersWithMetrics = users.map((u: any) => {
       const userOrders = orders.filter((o: any) => o.customerEmail?.toLowerCase() === u.email?.toLowerCase());
-      const totalSpent = userOrders.reduce((sum: number, o: any) => sum + (o.paymentStatus === 'PAID' ? o.total : 0), 0);
+      const totalSpent = userOrders.reduce(
+        (sum: number, o: any) => sum + (String(o.paymentStatus).toUpperCase() === 'PAID' ? o.total : 0),
+        0
+      );
       return {
         ...u,
         ordersCount: userOrders.length,

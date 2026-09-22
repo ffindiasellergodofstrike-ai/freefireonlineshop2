@@ -68,7 +68,7 @@ class DownloadServiceImpl {
       };
     }
 
-    if (order.paymentStatus !== 'PAID') {
+    if (order.paymentStatus?.toUpperCase() !== 'PAID') {
       return {
         success: false,
         message: `Order status is ${order.paymentStatus}. Digital access is unavailable until payment is confirmed.`,
@@ -125,7 +125,7 @@ class DownloadServiceImpl {
     const downloads: Array<{ order: Order; item: OrderItem; isAccessible: boolean }> = [];
 
     for (const order of orders) {
-      const isAccessible = order.paymentStatus === 'PAID';
+      const isAccessible = order.paymentStatus?.toUpperCase() === 'PAID';
       for (const item of order.items) {
         downloads.push({
           order,

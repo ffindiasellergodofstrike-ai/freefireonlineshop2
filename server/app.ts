@@ -456,8 +456,8 @@ const handleOrderCreation = async (req: AuthenticatedRequest, res: Response) => 
       productId: primaryProductId,
       productNameSnapshot: primaryProductName,
       status: 'PENDING',
-      paymentStatus: 'pending',
-      orderStatus: 'pending',
+      paymentStatus: 'PENDING',
+      orderStatus: 'PENDING',
       deliveryStatus: 'PENDING',
       downloadStatus: 'UNAVAILABLE',
       amount: calculatedTotal,
@@ -509,11 +509,19 @@ app.post('/api/user/orders', requireAuth, handleOrderCreation);
 // ============================================
 app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { orderId } = req.body;
+    const { orderId, agreeTerms } = req.body;
     const userId = req.userId!;
+
+    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+      return res.status(503).json({ success: false, message: 'Easebuzz payment gateway is not configured yet.' });
+    }
 
     if (!orderId) {
       return res.status(400).json({ success: false, message: 'Order ID is required.' });
+    }
+
+    if (agreeTerms !== true) {
+      return res.status(400).json({ success: false, message: 'You must accept the terms before starting payment.' });
     }
 
     const order = await FirebaseRtdb.getUserOrderById(userId, orderId);
@@ -521,7 +529,7 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
       return res.status(404).json({ success: false, message: 'Order not found.' });
     }
 
-    if (order.paymentStatus === 'paid' || order.paymentStatus === 'PAID') {
+    if (String(order.paymentStatus).toUpperCase() === 'PAID') {
       return res.status(400).json({ success: false, message: 'Order is already paid.' });
     }
 
@@ -568,9 +576,14 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     if (ebzData.status === 1) {
       order.easebuzzAccessKey = ebzData.data;
       order.status = 'PENDING_PAYMENT';
-      order.paymentStatus = 'pending';
+      order.paymentStatus = 'PENDING';
       await FirebaseRtdb.saveGlobalOrder(order);
-      res.json({ success: true, accessKey: ebzData.data });
+      res.json({
+        success: true,
+        accessKey: ebzData.data,
+        merchantKey: EASEBUZZ_KEY,
+        environment: EASEBUZZ_ENV,
+      });
     } else {
       res.status(400).json({ success: false, message: ebzData.data || 'Failed to initiate Easebuzz payment.' });
     }
@@ -581,12 +594,16 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
 
 // Shared server-side verification and synchronization helper
 async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ success: boolean; status?: string; message?: string; orderId?: string }> {
+  if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+    return { success: false, message: 'Easebuzz payment gateway is not configured yet.' };
+  }
+
   const globalOrder = await FirebaseRtdb.getGlobalOrder(orderIdOrTxnId);
   if (!globalOrder) {
     return { success: false, message: 'Order not found' };
   }
 
-  if (globalOrder.paymentStatus === 'paid' || globalOrder.paymentStatus === 'PAID') {
+  if (String(globalOrder.paymentStatus).toUpperCase() === 'PAID') {
     return { success: true, status: 'PAID', orderId: globalOrder.id, message: 'Already paid' };
   }
 
@@ -619,8 +636,8 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
   if (!verifyData.status || !verifyData.data || verifyData.data.status !== 'success') {
     const errorReason = verifyData.data?.error_Message || verifyData.data?.status || 'Verification failed';
     globalOrder.status = 'FAILED';
-    globalOrder.paymentStatus = 'failed';
-    globalOrder.orderStatus = 'failed';
+    globalOrder.paymentStatus = 'FAILED';
+    globalOrder.orderStatus = 'FAILED';
     globalOrder.failureReason = errorReason;
     globalOrder.updatedAt = new Date().toISOString();
     await FirebaseRtdb.saveGlobalOrder(globalOrder);
@@ -638,8 +655,8 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
   const userId = globalOrder.userId;
 
   globalOrder.status = 'PAID';
-  globalOrder.paymentStatus = 'paid';
-  globalOrder.orderStatus = 'paid';
+  globalOrder.paymentStatus = 'PAID';
+  globalOrder.orderStatus = 'PAID';
   globalOrder.deliveryStatus = 'DELIVERED';
   globalOrder.downloadStatus = 'AVAILABLE';
   globalOrder.transactionId = easebuzzId;
@@ -692,6 +709,10 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
 
 app.post('/api/payments/easebuzz/callback', async (req: Request, res: Response) => {
   try {
+    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+      return res.status(503).send('Easebuzz payment gateway is not configured yet.');
+    }
+
     const params = req.body;
     if (!verifyEasebuzzHash(params, EASEBUZZ_SALT)) {
       return res.status(400).send('Invalid signature');
@@ -707,8 +728,8 @@ app.post('/api/payments/easebuzz/callback', async (req: Request, res: Response) 
 
     if (status !== 'success') {
       globalOrder.status = 'FAILED';
-      globalOrder.paymentStatus = 'failed';
-      globalOrder.orderStatus = 'failed';
+      globalOrder.paymentStatus = 'FAILED';
+      globalOrder.orderStatus = 'FAILED';
       globalOrder.failureReason = params.error_Message || 'Payment failed on gateway';
       globalOrder.updatedAt = new Date().toISOString();
       await FirebaseRtdb.saveGlobalOrder(globalOrder);
@@ -771,7 +792,7 @@ app.post('/api/payments/easebuzz/reconcile-cron', async (req: Request, res: Resp
     const allOrders = await FirebaseRtdb.getAllGlobalOrders();
     const tenMinsAgo = Date.now() - 10 * 60 * 1000;
     const pendingOrders = allOrders.filter(o => 
-      (o.status === 'PENDING_PAYMENT' || o.paymentStatus === 'pending') &&
+      (o.status === 'PENDING_PAYMENT' || String(o.paymentStatus).toUpperCase() === 'PENDING') &&
       new Date(o.createdAt || o.date || 0).getTime() < tenMinsAgo
     );
 
@@ -805,7 +826,7 @@ app.post('/api/downloads/:productId/token', requireAuth, async (req: Authenticat
       return res.status(403).json({ success: false, message: 'Download limit has been reached for this product license.' });
     }
 
-    const tokenId = `DL-TOK-${Date.now()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+    const tokenId = `DL-TOK-${crypto.randomBytes(24).toString('base64url')}`;
     const expiresAt = Date.now() + 15 * 60 * 1000; // 15 mins
 
     const tokenData = {
@@ -853,29 +874,44 @@ app.get('/api/downloads/stream', async (req: Request, res: Response) => {
       return res.status(403).send('Download link has already been used.');
     }
 
-    // Mark token as used
+    // Re-check the active purchase immediately before opening the protected file.
+    const purchases = await FirebaseRtdb.getUserPurchases(tokenData.userId);
+    const purchase = purchases.find(
+      (p: any) =>
+        (p.purchaseId === tokenData.purchaseId || p.productId === tokenData.productId) &&
+        p.accessStatus === 'active'
+    );
+
+    if (!purchase) {
+      return res.status(403).send('Active purchase license not found for this download.');
+    }
+
+    const currentCount = purchase.downloadCount || 0;
+    const limit = purchase.downloadLimit || 10;
+    if (currentCount >= limit) {
+      return res.status(403).send('Download limit has been reached for this license.');
+    }
+
+    // Open the remote object before consuming the one-time token. This avoids
+    // burning a customer's token when storage is temporarily unavailable.
+    const upstream = await SecureFileManager.fetchProductFile(tokenData.productId);
+
     tokenData.used = true;
     await FirebaseRtdb.set(`downloadTokens/${token}`, tokenData);
 
-    // Enforce download limit & increment count
-    const purchases = await FirebaseRtdb.getUserPurchases(tokenData.userId);
-    const purchase = purchases.find((p: any) => p.purchaseId === tokenData.purchaseId || p.productId === tokenData.productId);
+    purchase.downloadCount = currentCount + 1;
+    await FirebaseRtdb.savePurchase(tokenData.userId, purchase.purchaseId, purchase);
 
-    if (purchase) {
-      const currentCount = purchase.downloadCount || 0;
-      const limit = purchase.downloadLimit || 10;
-      if (currentCount >= limit) {
-        return res.status(403).send('Download limit has been reached for this license.');
-      }
-      purchase.downloadCount = currentCount + 1;
-      await FirebaseRtdb.savePurchase(tokenData.userId, purchase.purchaseId, purchase);
-    }
-
-    const filePath = SecureFileManager.ensureProductFileExists(tokenData.productId);
     const filename = `${tokenData.productId}-package.zip`;
-    SecureFileManager.streamFileToResponse(filePath, filename, res);
+    SecureFileManager.streamProductFileToResponse(upstream, filename, res);
   } catch (err: any) {
-    res.status(500).send('Internal server error during download.');
+    if (!res.headersSent) {
+      const isConfigurationError = String(err?.message || '').includes('PRODUCT_DOWNLOAD_URL');
+      return res
+        .status(isConfigurationError ? 503 : 502)
+        .send(isConfigurationError ? 'Product download is not configured yet.' : 'Product download is temporarily unavailable.');
+    }
+    res.destroy(err);
   }
 });
 

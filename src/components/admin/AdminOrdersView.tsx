@@ -85,7 +85,7 @@ export const AdminOrdersView: React.FC<AdminOrdersViewProps> = ({ orders, onRefr
                   <td className="py-4 px-6 font-bold text-slate-900 dark:text-white">₹{o.total}</td>
                   <td className="py-4 px-6">
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                      o.paymentStatus === 'PAID' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' : 'bg-amber-100 text-amber-700'
+                      o.paymentStatus?.toUpperCase() === 'PAID' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' : 'bg-amber-100 text-amber-700'
                     }`}>
                       {o.paymentStatus || 'PENDING'}
                     </span>

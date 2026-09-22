@@ -32,6 +32,8 @@ declare global {
   }
 }
 
+const isPaidStatus = (status?: string): boolean => status?.toUpperCase() === 'PAID';
+
 export const CheckoutPage: React.FC = () => {
   const { cartItems, cartSummary, appliedCoupon, clearCart, currentUser, navigate, searchParams } = useApp();
   const { showToast } = useToast();
@@ -82,7 +84,7 @@ export const CheckoutPage: React.FC = () => {
       
       const checkStatus = async () => {
         const order = await OrderService.fetchOrderById(orderId);
-        if (order && order.paymentStatus === 'PAID') {
+        if (order && isPaidStatus(order.paymentStatus)) {
           setCompletedOrder(order);
           clearCart();
           setIsVerifying(false);
@@ -151,11 +153,11 @@ export const CheckoutPage: React.FC = () => {
       // 2. Initiate Easebuzz Payment via backend
       const initResult = await PaymentService.initiateEasebuzzPayment(pendingOrder.id, agreeTerms);
 
-      if (initResult.success && initResult.accessKey) {
+      if (initResult.success && initResult.accessKey && initResult.merchantKey) {
         // 3. Open Easebuzz Checkout Modal
         const easebuzzCheckout = new window.EasebuzzCheckout(
-          (import.meta as any).env.VITE_EASEBUZZ_KEY || 'EASEBUZZ_KEY_PLACEHOLDER', 
-          (import.meta as any).env.VITE_EASEBUZZ_ENV || 'test'
+          initResult.merchantKey,
+          initResult.environment || 'test'
         );
 
         const options = {
@@ -192,19 +194,23 @@ export const CheckoutPage: React.FC = () => {
     setIsVerifying(true);
     setVerificationError(null);
     try {
-      const res = await fetch('/api/orders/reconcile', {
+      const res = await fetch(`/api/payments/easebuzz/reconcile/${encodeURIComponent(orderId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ orderId }),
       });
       const data = await res.json();
       if (data.success) {
-        setCompletedOrder(data.order);
-        clearCart();
-        showToast('success', 'Order Reconciled', 'Access granted successfully.');
+        const order = await OrderService.fetchOrderById(orderId);
+        if (order && isPaidStatus(order.paymentStatus)) {
+          setCompletedOrder(order);
+          clearCart();
+          showToast('success', 'Order Reconciled', 'Access granted successfully.');
+        } else {
+          setVerificationError('Payment is not confirmed yet. Please try again in a moment.');
+        }
       } else {
-        setVerificationError('Manual reconciliation failed. Please contact support.');
+        setVerificationError(data.message || 'Manual reconciliation failed. Please contact support.');
       }
     } catch (err) {
       setVerificationError('Network error during reconciliation.');
