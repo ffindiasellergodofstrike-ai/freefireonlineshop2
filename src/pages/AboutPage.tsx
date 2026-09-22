@@ -99,6 +99,71 @@ export const AboutPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Verified Business Profile & Legal Coordinates for Merchant Gateways */}
+      <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold mb-2">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              Verified Indian Sole Proprietorship
+            </div>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
+              Business Entity & Ownership Information
+            </h2>
+          </div>
+          <div className="text-xs text-slate-500 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 shrink-0">
+            Payment Gateway Merchant Compliance
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-xs sm:text-sm">
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+            <span className="text-slate-500 font-medium block">Brand Name</span>
+            <span className="text-slate-900 font-bold text-base block">FreeFireShop</span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+            <span className="text-slate-500 font-medium block">Owner / Proprietor</span>
+            <span className="text-slate-900 font-bold text-base block">Prankrishna Das</span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+            <span className="text-slate-500 font-medium block">Customer Support Phone</span>
+            <a href="tel:+919793970031" className="text-blue-600 font-bold text-base block hover:underline">
+              +91 9793970031
+            </a>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+            <span className="text-slate-500 font-medium block">Official Support Email</span>
+            <a href="mailto:freefireshop.support@gmail.com" className="text-blue-600 font-bold text-sm block hover:underline break-all">
+              freefireshop.support@gmail.com
+            </a>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1 sm:col-span-2">
+            <span className="text-slate-500 font-medium block">Customer Support Timing</span>
+            <span className="text-slate-900 font-semibold block">
+              Monday to Saturday, 10:00 AM to 6:00 PM IST (Closed Sundays & National Holidays)
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5 sm:col-span-3 lg:col-span-2">
+            <span className="text-slate-500 font-medium block">Registered Office Address</span>
+            <p className="text-slate-800 leading-relaxed font-medium">
+              House no 417, Near Santosh Tea stall, Labour Chauraha, Shantipuram, Prayagraj, Uttar Pradesh - 211013, India
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5 sm:col-span-3 lg:col-span-1">
+            <span className="text-slate-500 font-medium block">Permanent Address</span>
+            <p className="text-slate-800 leading-relaxed font-medium">
+              02 No Takimari, Mantadari, PO: Milanpally, Dist: Jalpaiguri, West Bengal - 735133, India
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* CTA Box */}
       <div className="p-8 rounded-3xl bg-blue-50 border border-blue-200 text-center space-y-4">
         <h3 className="text-xl sm:text-2xl font-bold text-slate-900">

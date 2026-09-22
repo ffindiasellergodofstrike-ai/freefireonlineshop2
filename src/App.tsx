@@ -5,6 +5,8 @@ import { Header } from './components/Header';
 import { MobileMenu } from './components/MobileMenu';
 import { Footer } from './components/Footer';
 import { QuickSearchModal } from './components/QuickSearchModal';
+import { motion, AnimatePresence } from 'motion/react';
+import { Flame } from 'lucide-react';
 
 // Pages
 import { HomePage } from './pages/HomePage';
@@ -27,7 +29,7 @@ import { PolicyDetailsPage } from './pages/policies/PolicyDetailsPage';
 import { AdminPage } from './pages/AdminPage';
 
 const AppContent: React.FC = () => {
-  const { currentPath, pathParams } = useApp();
+  const { currentPath, pathParams, isNavigating } = useApp();
 
   // Scroll to top on route change
   useEffect(() => {
@@ -108,6 +110,40 @@ const AppContent: React.FC = () => {
       {/* Overlays & Modals */}
       <MobileMenu />
       <QuickSearchModal />
+
+      {/* Clean Animated Loader on Click / Navigation Only */}
+      <AnimatePresence>
+        {isNavigating && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex flex-col items-center justify-center p-4 select-none pointer-events-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              transition={{ type: 'spring', duration: 0.3 }}
+              className="flex flex-col items-center justify-center gap-3"
+            >
+              {/* Spinner with Flame Icon Animation */}
+              <div className="relative w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-4 border-slate-700/40 border-t-blue-500 border-r-indigo-500 animate-spin" />
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-blue-700 via-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
+                  <Flame className="w-5 h-5 sm:w-6 sm:h-6 text-amber-300 fill-amber-400 animate-pulse" />
+                </div>
+              </div>
+
+              {/* Minimal Loading Text */}
+              <p className="text-xs sm:text-sm font-bold text-white tracking-widest uppercase font-mono animate-pulse">
+                Loading...
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

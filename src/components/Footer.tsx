@@ -4,13 +4,11 @@ import {
   ShieldCheck,
   Zap,
   RefreshCw,
-  Headphones,
   Mail,
-  Github,
-  Twitter,
-  Disc as Discord,
   CheckCircle2,
-  Lock,
+  Phone,
+  Clock,
+  UserCheck,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
@@ -36,44 +34,40 @@ export const Footer: React.FC = () => {
     <footer className="bg-slate-900 text-slate-300 pt-16 pb-12 border-t border-slate-800">
       {/* Top Value Proposition Grid */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 border-b border-slate-800/80">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="flex items-center gap-3.5 p-4 rounded-xl bg-slate-800/40 border border-slate-800">
-            <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
-              <Zap className="w-5 h-5" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
+          <div className="flex flex-col gap-4 p-6 rounded-2xl bg-slate-800/20 border border-slate-800/60 hover:border-blue-500/30 transition-all duration-300 shadow-inner group">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20 group-hover:scale-105 transition-transform">
+              <ShieldCheck className="w-6 h-6" />
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-white">Instant Digital Delivery</h4>
-              <p className="text-xs text-slate-400 mt-0.5">Secure file access immediately after payment verification</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3.5 p-4 rounded-xl bg-slate-800/40 border border-slate-800">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-white">Authorized Digital Goods</h4>
-              <p className="text-xs text-slate-400 mt-0.5">Direct distribution of authorized digital assets and tools</p>
+            <div className="space-y-1.5">
+              <h4 className="text-base font-bold text-white tracking-tight">Authorized Digital Goods</h4>
+              <p className="text-xs sm:text-sm text-slate-400 leading-relaxed font-normal">
+                We only distribute digital products that we are fully authorized to sell, ensuring complete licensing confidence and legal peace of mind.
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3.5 p-4 rounded-xl bg-slate-800/40 border border-slate-800">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0">
-              <RefreshCw className="w-5 h-5" />
+          <div className="flex flex-col gap-4 p-6 rounded-2xl bg-slate-800/20 border border-slate-800/60 hover:border-emerald-500/30 transition-all duration-300 shadow-inner group">
+            <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20 group-hover:scale-105 transition-transform">
+              <Zap className="w-6 h-6" />
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-white">Lifetime Updates</h4>
-              <p className="text-xs text-slate-400 mt-0.5">Access future version releases and fixes from your account</p>
+            <div className="space-y-1.5">
+              <h4 className="text-base font-bold text-white tracking-tight">Instant Electronic Delivery</h4>
+              <p className="text-xs sm:text-sm text-slate-400 leading-relaxed font-normal">
+                Receive instant access to downloadable files, secure tokens, and documentation immediately upon payment verification.
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3.5 p-4 rounded-xl bg-slate-800/40 border border-slate-800">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
-              <Headphones className="w-5 h-5" />
+          <div className="flex flex-col gap-4 p-6 rounded-2xl bg-slate-800/20 border border-slate-800/60 hover:border-purple-500/30 transition-all duration-300 shadow-inner group">
+            <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0 border border-purple-500/20 group-hover:scale-105 transition-transform">
+              <RefreshCw className="w-6 h-6" />
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-white">Dedicated Support</h4>
-              <p className="text-xs text-slate-400 mt-0.5">Prompt technical assistance directly from our support team</p>
+            <div className="space-y-1.5">
+              <h4 className="text-base font-bold text-white tracking-tight">Maintenance & Updates</h4>
+              <p className="text-xs sm:text-sm text-slate-400 leading-relaxed font-normal">
+                Access maintenance releases, security patches, and future product enhancements directly from your account vault.
+              </p>
             </div>
           </div>
         </div>
@@ -83,7 +77,7 @@ export const Footer: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-10">
           {/* Brand Col */}
-          <div className="lg:col-span-4 space-y-4">
+          <div className="lg:col-span-5 space-y-4">
             <div
               onClick={() => navigate('/')}
               className="flex items-center gap-2.5 cursor-pointer group w-fit"
@@ -99,6 +93,34 @@ export const Footer: React.FC = () => {
             <p className="text-sm text-slate-400 max-w-sm leading-relaxed">
               Official digital products store offering authorized scripts, developer utilities, downloadable assets, video walkthroughs, and engineering resources.
             </p>
+
+            {/* Business Entity Block */}
+            <div className="p-4 rounded-2xl bg-slate-850/60 border border-slate-800 space-y-2 text-xs text-slate-400">
+              <div className="flex items-center gap-2 text-white font-bold">
+                <UserCheck className="w-4 h-4 text-emerald-400" />
+                <span>Proprietorship: Prankrishna Das</span>
+              </div>
+              <p className="text-[11px] leading-relaxed">
+                <strong className="text-slate-300">Registered Address:</strong> House no 417, Near Santosh Tea stall, Labour Chauraha, Shantipuram, Prayagraj, Uttar Pradesh - 211013, India
+              </p>
+              <p className="text-[11px] leading-relaxed">
+                <strong className="text-slate-300">Permanent Address:</strong> 02 No Takimari, Mantadari, PO: Milanpally, Dist: Jalpaiguri, West Bengal - 735133, India
+              </p>
+              <div className="pt-2 border-t border-slate-800/80 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                <span className="flex items-center gap-1 text-slate-300">
+                  <Mail className="w-3.5 h-3.5 text-blue-400" />
+                  freefireshop.support@gmail.com
+                </span>
+                <span className="flex items-center gap-1 text-slate-300">
+                  <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                  +91 9793970031
+                </span>
+                <span className="flex items-center gap-1 text-slate-300 w-full mt-0.5">
+                  <Clock className="w-3.5 h-3.5 text-purple-400" />
+                  Mon - Sat, 10:00 AM - 6:00 PM IST
+                </span>
+              </div>
+            </div>
 
             {/* Newsletter Subscribe */}
             <div className="pt-2">
@@ -124,7 +146,7 @@ export const Footer: React.FC = () => {
                   </div>
                   <button
                     type="submit"
-                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-colors shrink-0 shadow-sm"
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-colors shrink-0 shadow-sm cursor-pointer"
                   >
                     Subscribe
                   </button>
@@ -134,13 +156,13 @@ export const Footer: React.FC = () => {
           </div>
 
           {/* Quick Navigation */}
-          <div className="lg:col-span-4 space-y-4">
+          <div className="lg:col-span-3 space-y-4">
             <h4 className="text-xs font-bold uppercase tracking-wider text-white">Quick Links</h4>
             <ul className="space-y-2 text-xs">
               <li>
                 <button
                   onClick={() => navigate('/')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
                 >
                   Home
                 </button>
@@ -148,7 +170,7 @@ export const Footer: React.FC = () => {
               <li>
                 <button
                   onClick={() => navigate('/products')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
                 >
                   All Products
                 </button>
@@ -156,7 +178,7 @@ export const Footer: React.FC = () => {
               <li>
                 <button
                   onClick={() => navigate('/search')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
                 >
                   Search Store
                 </button>
@@ -164,7 +186,7 @@ export const Footer: React.FC = () => {
               <li>
                 <button
                   onClick={() => navigate('/faq')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
                 >
                   Help & FAQs
                 </button>
@@ -172,7 +194,7 @@ export const Footer: React.FC = () => {
               <li>
                 <button
                   onClick={() => navigate('/account')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
                 >
                   My Account & Orders
                 </button>
@@ -180,7 +202,7 @@ export const Footer: React.FC = () => {
               <li>
                 <button
                   onClick={() => navigate('/wishlist')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
                 >
                   Saved Wishlist
                 </button>
@@ -190,62 +212,70 @@ export const Footer: React.FC = () => {
 
           {/* Company & Legal */}
           <div className="lg:col-span-4 space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white">Company & Legal</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-white">Policy & Compliance</h4>
             <ul className="space-y-2 text-xs">
               <li>
                 <button
                   onClick={() => navigate('/about')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
                 >
-                  About Us
+                  About Us & Proprietor Details
                 </button>
               </li>
               <li>
                 <button
                   onClick={() => navigate('/contact')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
                 >
-                  Contact
+                  Contact & Support
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => navigate('/terms')}
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
+                >
+                  Terms & Conditions
                 </button>
               </li>
               <li>
                 <button
                   onClick={() => navigate('/privacy')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
                 >
                   Privacy Policy
                 </button>
               </li>
               <li>
                 <button
-                  onClick={() => navigate('/terms')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
-                >
-                  Terms of Service
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => navigate('/policies/content')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
-                >
-                  Content Policy
-                </button>
-              </li>
-              <li>
-                <button
                   onClick={() => navigate('/refund')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
                 >
-                  Refund Policy
+                  Refund & Replacement Policy
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => navigate('/policies/cancellation')}
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
+                >
+                  Cancellation Policy
                 </button>
               </li>
               <li>
                 <button
                   onClick={() => navigate('/policies/shipping-delivery')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
                 >
-                  Shipping & Delivery
+                  Shipping & Digital Delivery Policy
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => navigate('/policies/grievance')}
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left cursor-pointer"
+                >
+                  Grievance Redressal Mechanism
                 </button>
               </li>
             </ul>
@@ -253,39 +283,11 @@ export const Footer: React.FC = () => {
         </div>
       </div>
 
-      {/* Bottom Bar: Copyright & Socials */}
+      {/* Bottom Bar: Copyright */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 border-t border-slate-800 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p>© 2026 FreeFireShop. All rights reserved. Authorized digital products and developer tools.</p>
-
-        <div className="flex items-center gap-4 text-slate-400">
-          <a
-            href="https://github.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-white transition-colors"
-            aria-label="FreeFireShop GitHub"
-          >
-            <Github className="w-4 h-4" />
-          </a>
-          <a
-            href="https://twitter.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-white transition-colors"
-            aria-label="FreeFireShop Twitter"
-          >
-            <Twitter className="w-4 h-4" />
-          </a>
-          <a
-            href="https://discord.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-white transition-colors"
-            aria-label="FreeFireShop Discord"
-          >
-            <Discord className="w-4 h-4" />
-          </a>
-        </div>
+        <p className="text-center sm:text-left">
+          © 2026 FreeFireShop. Owned & Operated by Prankrishna Das. All rights reserved.
+        </p>
       </div>
     </footer>
   );

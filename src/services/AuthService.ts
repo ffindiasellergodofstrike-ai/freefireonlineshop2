@@ -1,6 +1,7 @@
 import { User } from '../types';
 
-const USER_STORAGE_KEY = 'vexora_auth_user_v1';
+const USER_STORAGE_KEY = 'freefireshop_auth_user_v1';
+const PREVIOUS_STORAGE_KEY = 'ff_auth_user_v1';
 
 export interface RegisterPayload {
   mobile: string;
@@ -25,7 +26,14 @@ class AuthServiceImpl {
   private isInitialized = false;
 
   constructor() {
-    const cachedUser = localStorage.getItem(USER_STORAGE_KEY);
+    let cachedUser = localStorage.getItem(USER_STORAGE_KEY);
+    if (!cachedUser) {
+      cachedUser = localStorage.getItem(PREVIOUS_STORAGE_KEY);
+      if (cachedUser) {
+        localStorage.setItem(USER_STORAGE_KEY, cachedUser);
+        localStorage.removeItem(PREVIOUS_STORAGE_KEY);
+      }
+    }
     if (cachedUser) {
       try {
         this.currentUser = JSON.parse(cachedUser);

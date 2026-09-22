@@ -35,7 +35,7 @@ export const PolicyDetailsPage: React.FC<PolicyDetailsPageProps> = ({ slug }) =>
         <div className="space-y-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Official FFDigital Compliance Policy</span>
+            <span>Official Free Fire Shop Compliance Policy</span>
           </div>
           <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight leading-tight">{policy.title}</h1>
           <p className="text-slate-600 text-sm sm:text-base max-w-3xl leading-relaxed">{policy.subtitle}</p>

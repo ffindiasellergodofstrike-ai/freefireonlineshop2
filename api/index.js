@@ -2017,7 +2017,7 @@ adminRouter.post("/uploads/direct", upload.single("image"), async (req, res) => 
     if (!file) {
       return res.status(400).json({ success: false, message: "No image file provided.", requestId });
     }
-    const bucket = process.env.FIREBASE_STORAGE_BUCKET || "vexora-724fc.appspot.com";
+    const bucket = process.env.FIREBASE_STORAGE_BUCKET || "freefireshop.appspot.com";
     const filename = `products/${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`;
     const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodeURIComponent(filename)}`;
     const response = await fetch(uploadUrl, {

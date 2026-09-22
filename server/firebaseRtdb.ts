@@ -1,6 +1,6 @@
 /**
  * Firebase Realtime Database REST Client with Resilient Fallback Persistence
- * Communicates with https://vexora-724fc-default-rtdb.asia-southeast1.firebasedatabase.app/
+ * Communicates with configured FIREBASE_DATABASE_URL
  */
 
 import fs from 'fs';

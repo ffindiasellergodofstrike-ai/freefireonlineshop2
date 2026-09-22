@@ -23,7 +23,6 @@ import {
   BookOpen,
   Lock,
   ChevronDown,
-  Loader2,
   Maximize2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -123,7 +122,6 @@ export const ProductDetailsPage: React.FC = () => {
 
   const quantity = 1;
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
-  const [isPreviewLoading, setIsPreviewLoading] = useState(true);
 
   if (!product) {
     return (
@@ -197,10 +195,7 @@ export const ProductDetailsPage: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
               <button
                 id="launch-interactive-demo-btn"
-                onClick={() => {
-                  setIsPreviewLoading(Boolean(product.previewUrl));
-                  setIsDemoModalOpen(true);
-                }}
+                onClick={() => setIsDemoModalOpen(true)}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold transition-all shadow-xs"
               >
                 <MonitorPlay className="w-4 h-4" />
@@ -441,22 +436,13 @@ export const ProductDetailsPage: React.FC = () => {
               </div>
 
               <div className="relative h-[clamp(20rem,58dvh,35rem)] sm:h-[70dvh] sm:min-h-[460px] overflow-hidden rounded-xl sm:rounded-2xl border border-slate-300 bg-slate-950 shadow-inner">
-                {isPreviewLoading && (
-                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950 text-white">
-                    <div className="flex items-center gap-3 text-sm font-semibold">
-                      <Loader2 className="h-5 w-5 animate-spin text-blue-400" />
-                      Loading secure preview…
-                    </div>
-                  </div>
-                )}
                 <iframe
                   src={product.previewUrl}
                   title={`${product.title} live demo preview`}
                   className="h-full w-full bg-white"
                   sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
                   referrerPolicy="no-referrer"
-                  loading="lazy"
-                  onLoad={() => setIsPreviewLoading(false)}
+                  loading="eager"
                 />
 
                 <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden="true">

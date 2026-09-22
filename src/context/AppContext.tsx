@@ -62,6 +62,7 @@ export interface AppContextType {
   signOut: () => void;
 
   // UI state
+  isNavigating: boolean;
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
   isQuickSearchOpen: boolean;
@@ -121,6 +122,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(() => AuthService.getCurrentUser());
 
   // Mobile Menu & Quick Search
+  const [isNavigating, setIsNavigating] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isQuickSearchOpen, setIsQuickSearchOpen] = useState(false);
   const [activeQuickSearchQuery, setActiveQuickSearchQuery] = useState('');
@@ -179,28 +181,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Store previous path for manual back navigation
     localStorage.setItem('ff_previous_path', window.location.pathname + window.location.search);
     
-    window.history.pushState({}, '', fullUrl);
-    setNavState(parsePath(target, queryString));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    setIsMobileMenuOpen(false);
-    setIsQuickSearchOpen(false);
+    setIsNavigating(true);
+    
+    setTimeout(() => {
+      window.history.pushState({}, '', fullUrl);
+      setNavState(parsePath(target, queryString));
+      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+      setIsMobileMenuOpen(false);
+      setIsQuickSearchOpen(false);
+      setIsNavigating(false);
+    }, 450);
   };
 
   const goBack = () => {
     const prev = localStorage.getItem('ff_previous_path');
-    if (prev && prev !== window.location.pathname) {
-      const { path, searchParams } = parsePath(prev.split('?')[0], prev.split('?')[1] ? '?' + prev.split('?')[1] : '');
-      window.history.pushState({}, '', prev);
-      setNavState({ path, params: {}, searchParams }); // params will be re-parsed in next turn or by segments logic
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-      // Fallback to home or browser history
-      if (window.history.length > 1) {
-        window.history.back();
+    setIsNavigating(true);
+    
+    setTimeout(() => {
+      if (prev && prev !== window.location.pathname) {
+        const { path, searchParams } = parsePath(prev.split('?')[0], prev.split('?')[1] ? '?' + prev.split('?')[1] : '');
+        window.history.pushState({}, '', prev);
+        setNavState({ path, params: {}, searchParams }); // params will be re-parsed in next turn or by segments logic
+        window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
       } else {
-        navigate('/');
+        // Fallback to home or browser history
+        if (window.history.length > 1) {
+          window.history.back();
+        } else {
+          window.history.pushState({}, '', '/');
+          setNavState({ path: '/', params: {}, searchParams: {} });
+          window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+        }
       }
-    }
+      setIsMobileMenuOpen(false);
+      setIsQuickSearchOpen(false);
+      setIsNavigating(false);
+    }, 450);
   };
 
   // Keyboard shortcut (Cmd+K / Ctrl+K) for quick search
@@ -371,6 +387,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateProfile,
         signOut,
 
+        isNavigating,
         isMobileMenuOpen,
         setIsMobileMenuOpen,
         isQuickSearchOpen,

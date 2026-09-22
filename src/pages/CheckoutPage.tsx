@@ -531,7 +531,7 @@ export const CheckoutPage: React.FC = () => {
                   className="mt-1 rounded text-blue-600 accent-blue-600 w-4 h-4 cursor-pointer shrink-0"
                 />
                 <label htmlFor="agree-terms" className="text-xs text-slate-600 leading-relaxed cursor-pointer select-none">
-                  I explicitly acknowledge and agree to the FFDigital{' '}
+                  I explicitly acknowledge and agree to the FreeFireShop{' '}
                   <button
                     type="button"
                     onClick={() => navigate('/terms')}
@@ -618,7 +618,7 @@ export const CheckoutPage: React.FC = () => {
               )}
               <div className="flex justify-between text-slate-600">
                 <span>Delivery:</span>
-                <span className="text-emerald-600 font-semibold">Instant Download</span>
+                <span className="text-emerald-600 font-semibold">Instant Digital Delivery</span>
               </div>
               <div className="pt-2 border-t border-slate-100 flex justify-between items-baseline">
                 <span className="text-sm font-bold text-slate-900">Total Price:</span>
@@ -628,9 +628,14 @@ export const CheckoutPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-3 bg-blue-50 rounded-xl text-[11px] text-blue-800 flex items-start gap-2">
+            <div className="p-3.5 bg-blue-50/80 border border-blue-100 rounded-2xl text-[11px] text-blue-900 flex items-start gap-2.5">
               <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-              <span>Full 14-day defect refund guarantee on all unencrypted digital products.</span>
+              <div className="space-y-0.5">
+                <span className="font-bold block">FreeFireShop Verified Delivery Guarantee</span>
+                <p className="text-blue-700/90 leading-relaxed">
+                  Direct digital delivery via email and dashboard. Protected by 24-48 hr resolution policy for failed top-ups or payment disputes.
+                </p>
+              </div>
             </div>
           </div>
         </div>

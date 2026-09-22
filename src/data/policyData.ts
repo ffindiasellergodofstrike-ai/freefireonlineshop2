@@ -19,137 +19,146 @@ const rawPolicyData: Record<string, Policy> = {
   terms: {
     slug: 'terms',
     title: 'Terms & Conditions',
-    subtitle: 'The official binding agreement governing customer access, account creation, and product licensing on FFDigital.',
+    subtitle: 'The official binding agreement governing customer access, account creation, and digital product orders on FreeFireShop.',
     lastUpdated: '[DATE]',
     quickSummary: [
-      'Comprehensive legal terms governing all digital product purchases and website usage.',
-      'Operated solely as an individual proprietorship by [OWNER FULL LEGAL NAME].',
-      'Instant digital download licensing details and usage rules.',
-      'Disputes governed under the jurisdiction of Indian laws and courts.',
+      'Operated solely as an individual proprietorship by Owner / Proprietor Prankrishna Das.',
+      'Customer must enter accurate game UID, account details, email, and Indian mobile number.',
+      'FreeFireShop is not responsible for delivery delays or failures caused by incorrect details entered by customer.',
+      'Digital products and gaming services cannot be cancelled once delivered.',
+      'Abuse, fraud, chargeback misuse, or fake payment proof will result in order cancellation and legal action.',
     ],
     sections: [
       {
         id: 'operator-identity',
         title: '1. Operator Identity & Business Structure',
-        content: 'This website (https://www.ffdigital.shop/) and all its digital services, products, and downloads are operated and distributed exclusively by [OWNER FULL LEGAL NAME], acting as the Sole Proprietor of FFDigital. FFDigital is not a multi-vendor marketplace, team-based software company, or corporate conglomerate. There are no co-founders, partners, secondary sellers, or external representatives. All transactions, digital content, and support services are managed directly by the Individual Proprietor.'
+        content: 'FreeFireShop (https://freefireshop.dev/) is an Indian digital e-commerce platform operated exclusively by Prankrishna Das, acting as the Sole Proprietor. FreeFireShop specializes in authorized digital gaming products, game-related services, digital developer tools, scripts, and electronic resources. \n\n• Proprietor Name: Prankrishna Das \n• Brand Name: FreeFireShop \n• Registered Address: House no 417, Near Santosh Tea stall, Labour Chauraha, Shantipuram, Prayagraj, Uttar Pradesh - 211013, India \n• Permanent Address: 02 No Takimari, Mantadari, PO: Milanpally, Dist: Jalpaiguri, West Bengal - 735133, India \n• Support Email: freefireshop.support@gmail.com \n• Phone: +91 9793970031 \n• Support Timing: Monday to Saturday, 10:00 AM to 6:00 PM IST'
       },
       {
         id: 'binding-agreement',
         title: '2. Binding Legal Agreement',
-        content: 'By accessing this website, registering an account, or purchasing any digital downloads, you agree to be bound in full by these Terms & Conditions, the Refund Policy, and our Privacy Policy. If you do not agree to these terms, you must cease using this site immediately. These terms constitute a legally binding electronic agreement between you (the Customer) and [OWNER FULL LEGAL NAME] (the Proprietor).'
+        content: 'By accessing this website, placing an order, registering an account, or submitting payment for any digital product or service on FreeFireShop, you agree to be bound in full by these Terms & Conditions, the Refund Policy, Privacy Policy, and Shipping & Delivery Policy. If you do not agree to these terms, you must discontinue using this website immediately.'
       },
       {
-        id: 'account-security',
-        title: '3. Account Registration & Credential Integrity',
-        content: 'To purchase digital assets or access download vaults, you must register a customer account. You agree to provide accurate, truthful, and complete details, including your email address and an active Indian mobile number. You are solely responsible for protecting your login credentials. Concurrent logins or account sharing are strictly prohibited and will trigger automatic system lockout and license revocation.'
+        id: 'customer-obligation',
+        title: '3. Customer Accuracy & Input Obligations',
+        content: 'When placing an order on FreeFireShop, the customer is strictly required to provide accurate, truthful, and verified details, including your Game Player UID, in-game account identifiers, registered email address, and active Indian mobile number. FreeFireShop executes digital deliveries and top-ups based on the exact information submitted by the customer. FreeFireShop is NOT responsible for delays, failed delivery, or incorrect credit resulting from wrong, mistyped, or inaccurate details entered by the customer.'
       },
       {
         id: 'digital-product-delivery',
-        title: '4. Digital Delivery & Secure Vault Access',
-        content: 'All products sold on FFDigital are intangible, digital files (such as ZIP archives, source code, website templates, scripts, and PDFs). Upon successful payment validation, delivery is initiated electronically. You receive access through your customer dashboard\'s "My Downloads" section and a secure download link via email. Direct access to download links may be monitored or rate-limited to prevent bandwidth abuse.'
+        title: '4. Digital Delivery & Fulfillment Methods',
+        content: 'All products and services offered on FreeFireShop are 100% digital and intangible (such as in-game top-ups, account credits, redeem codes, digital downloadable packages, developer scripts, and software assets). Delivery is executed electronically via email, WhatsApp, account credit, Player UID top-up, or the customer dashboard order panel. Expected delivery takes between 5 minutes and 24 hours following payment confirmation. No physical shipping is applicable.'
       },
       {
         id: 'pricing-payments',
-        title: '5. Pricing, Taxes & Payment Verification',
-        content: 'All prices are listed in Indian Rupees (₹) unless stated otherwise. Prices are subject to revision at the sole discretion of the Proprietor without prior notification. Orders are deemed accepted only after successful payment authorization is confirmed by our integrated payment processors (e.g., Easebuzz). You agree to provide valid billing coordinates and accept responsibility for any local taxes or transaction charges.'
+        title: '5. Pricing, Currency & Payment Gateways',
+        content: 'All product prices are quoted in Indian Rupees (₹ INR). Payments are collected through certified Indian payment gateways (such as Easebuzz and CCAvenue) utilizing secure encryption, UPI, Net Banking, and Debit/Credit Cards. Orders are processed only after positive settlement authorization from our payment gateway partners.'
       },
       {
-        id: 'refunds-disclaimers',
-        title: '6. Refund and Cancellation Rules',
-        content: 'Due to the nature of digital products, which are fully accessible immediately after purchase, all transactions are final. Refunds are strictly limited and governed by our Digital Product Refund Policy. Order cancellation is not supported once the file transfer, license key allocation, or vault download link has been electronically provisioned.'
+        id: 'cancellation-restriction',
+        title: '6. Cancellation Restrictions',
+        content: 'Due to the instantaneous and irrevocable nature of digital goods and game credits, digital products and services CANNOT be cancelled, recalled, or reversed once delivery, Player UID top-up, or digital code generation has been completed.'
       },
       {
-        id: 'intellectual-property',
-        title: '7. Proprietary Rights & Content Ownership',
-        content: 'All source code, design layouts, digital scripts, documentation, and graphical media available on this site are the intellectual property of [OWNER FULL LEGAL NAME] (except where third-party asset licenses are explicitly declared). Purchasing a product grants you a conditional license and does not transfer copyrights or brand ownership.'
+        id: 'fraud-anti-abuse',
+        title: '7. Anti-Fraud, Abuse & Chargeback Misuse',
+        content: 'Any attempt to defraud FreeFireShop, submit counterfeit payment screenshots, make fraudulent claims, or initiate unjustified bank chargebacks after successful delivery will result in immediate permanent account termination, forfeiture of unfulfilled orders, and filing of formal cybercrime complaints with Indian law enforcement.'
       },
       {
         id: 'liability-limit',
-        title: '8. Limitation of Liability & Indemnity',
-        content: 'To the maximum extent permitted under Indian law, [OWNER FULL LEGAL NAME] shall not be liable for any direct, indirect, incidental, or consequential damages (including server downtime, loss of business profits, or coding integration failures) arising from the use or inability to use our digital assets. The maximum aggregate liability under any circumstance is strictly capped at the exact amount paid for the specific product.'
+        title: '8. Limitation of Liability',
+        content: 'To the fullest extent permitted by Indian law, Prankrishna Das and FreeFireShop shall not be liable for game server downtimes, third-party publisher maintenance, or indirect operational losses. Our total financial liability under any circumstance is strictly capped at the purchase price paid for the specific order.'
       },
       {
         id: 'governing-law',
         title: '9. Governing Law & Jurisdiction',
-        content: 'These Terms & Conditions are governed by and construed in accordance with the laws of the Republic of India. Any legal dispute, conflict, or claim arising from your use of this website or purchases made on FFDigital shall be subject to the exclusive jurisdiction of the competent courts located in the city/district of the Proprietor\'s principal place of business.'
+        content: 'These Terms & Conditions are governed by and construed in accordance with the laws of the Republic of India. Any legal dispute arising under or in connection with FreeFireShop shall be subject to the exclusive jurisdiction of the competent courts in India.'
       },
       {
-        id: 'modifications',
-        title: '10. Right to Modify Terms',
-        content: 'The Proprietor reserves the absolute right to amend, update, or rewrite these Terms & Conditions at any time to align with business requirements or Indian digital laws. The "Last Revised" date will be updated accordingly, and your continued usage of the website or customer dashboard constitutes your legal assent to the revised terms.'
+        id: 'support-coordination',
+        title: '10. Customer Support Contact',
+        content: 'For questions regarding these Terms, contact us during operational hours (Monday to Saturday, 10:00 AM to 6:00 PM IST) at freefireshop.support@gmail.com or via telephone at +91 9793970031.'
       }
     ]
   },
   refund: {
     slug: 'refund',
     title: 'Refund & Cancellation Policy',
-    subtitle: 'Clear, legally sound parameters concerning digital product downloads, technical non-delivery, and payment gateway issues.',
+    subtitle: 'Transparent, consumer-friendly refund procedures and eligibility guidelines for digital products on FreeFireShop.',
     lastUpdated: '[DATE]',
     quickSummary: [
-      'Digital items are intangible and generally non-refundable once delivered or downloaded.',
-      'Explicit exception for verified technical delivery failures caused by server faults.',
-      'Duplicate gateway charges are fully refundable upon verification.',
-      'Strictly adheres to Indian consumer safety guidelines on digital transactions.',
+      'Clear, formal refund evaluation process for all transactions on FreeFireShop.',
+      'Refunds applicable if order is not delivered, wrong product delivered, duplicate payment occurs, or payment deducted on failed orders.',
+      'Refunds are strictly not applicable after successful digital delivery, UID top-up, redeem code issuance, or account credit.',
+      'Customer can request a refund via email (freefireshop.support@gmail.com) or phone (+91 9793970031).',
+      'Approved refunds are credited to the original payment source within 5 to 7 working days.',
+      'Customer support available Monday to Saturday, 10:00 AM to 6:00 PM IST.',
     ],
     sections: [
       {
-        id: 'finality-rule',
-        title: '1. Finality of Digital Content Sales',
-        content: 'All sales of digital products on FFDigital (including downloadable ZIP archives, scripts, code templates, software assets, and PDF guides) are considered final and non-refundable. Because digital goods are delivered instantly and cannot be returned in a physical sense, we do not accept returns, cancellations, or "mind-change" refund claims once the products have been added to your dashboard download vault.'
+        id: 'refund-eligibility',
+        title: '1. Refund Eligibility & Applicable Scenarios',
+        content: 'At FreeFireShop, customer satisfaction and trust are paramount. Refunds are evaluated and granted under the following clear circumstances: \n\n• Order Not Delivered: The order has not been delivered within 24 hours of successful payment confirmation and technical support is unable to complete the delivery. \n• Wrong Product or Service Delivered: The delivered item or service does not match the purchased specification due to an error on our part. \n• Duplicate Transaction / Double Billing: Multiple debits occurred for a single order due to payment gateway timeout or technical failure. \n• Payment Deducted but Order Failed: Payment was debited from your bank account or UPI wallet, but the transaction timed out or failed to generate an active order.'
       },
       {
-        id: 'delivery-exception',
-        title: '2. Technical Non-Delivery Exception',
-        content: 'If you have successfully paid for a digital product but face an access denial or server error that prevents download, please contact us immediately. We will investigate the transaction log and attempt to deliver the assets manually via email or secure cloud link within 48 business hours. If we genuinely cannot deliver the file or resolve the technical block after verification, a full refund of the product purchase price will be issued.'
+        id: 'non-refundable',
+        title: '2. Non-Refundable Situations',
+        content: 'Refunds are NOT applicable in the following situations: \n\n• Successful Digital Delivery: Once a digital product, game UID top-up, electronic redeem code, or account credit has been successfully processed and dispatched. \n• Incorrect Details Entered by Customer: FreeFireShop is not responsible for failed or misdirected deliveries if the customer entered an incorrect Game UID, wrong account identifier, or incorrect email address. \n• Change of Mind: Cancellations or refund requests based on change of mind after payment has been authorized and processing has begun.'
       },
       {
-        id: 'duplicate-charges',
-        title: '3. Duplicate Charging Errors',
-        content: 'If you were charged multiple times for the same transaction due to a payment gateway timeout, double-submission, or technical glitch, please share the billing screenshot and order ID. Once our payment gateway logs confirm a duplicate payment capture, we will initiate a reverse transaction for the duplicate charge within 3 to 5 business days.'
-      },
-      {
-        id: 'no-cancellation',
-        title: '4. Cancellation of Processed Orders',
-        content: 'We do not support the cancellation of successful, paid orders. If you change your mind, buy the wrong version, or realize your system does not meet the specified software requirements, we cannot issue a refund. Please read product descriptions, check system specifications, and watch demo videos carefully before purchasing.'
+        id: 'refund-process',
+        title: '3. Step-by-Step Refund Request Process',
+        content: 'To request a refund, please follow these simple steps: \n\n1. Contact our support desk by emailing freefireshop.support@gmail.com or calling +91 9793970031 during working hours (Monday to Saturday, 10:00 AM to 6:00 PM IST). \n2. Provide your Order ID, Payment Proof (Bank / Gateway Transaction UTR or reference receipt), Registered Mobile Number or Email, and a clear explanation of the issue. \n3. Our customer support team will verify the payment gateway transaction log and delivery status within 24 to 48 business hours.'
       },
       {
         id: 'refund-timeline',
-        title: '5. Refund Processing Timelines',
-        content: 'Where a refund is approved by the Proprietor under the technical non-delivery exception, the transaction is reversed via our official payment gateway (e.g., Easebuzz). The funds will reflect in your original payment source (Bank Account, Credit/Debit Card, or Wallet) within 5 to 7 Indian banking days, subject to standard banking settlement schedules.'
+        title: '4. Refund Processing Timelines & Method',
+        content: 'Once your refund request is approved, the refund is initiated directly through our official payment gateway (Easebuzz / CCAvenue). The funds will be credited back to the original payment method (Bank Account, UPI ID, Credit/Debit Card, or Net Banking) within 5 to 7 working days, subject to your issuing bank\'s settlement schedule.'
+      },
+      {
+        id: 'order-cancellation',
+        title: '5. Order Cancellation Rules',
+        content: 'Because orders for digital game products and top-ups are placed into immediate automated fulfillment, orders cannot be cancelled once digital delivery has occurred. If you made an error and wish to cancel before delivery has been executed, contact us immediately at freefireshop.support@gmail.com or +91 9793970031. If delivery has not commenced, our team will cancel the order and process a full refund within 5 to 7 working days.'
       }
     ]
   },
   delivery: {
     slug: 'delivery',
-    title: 'Digital Product Delivery Policy',
-    subtitle: 'Comprehensive overview of how digital purchases are provisioned, verified, and secured for immediate access.',
+    title: 'Shipping & Delivery Policy',
+    subtitle: 'Official digital delivery guidelines for all game products, top-ups, and electronic services on FreeFireShop.',
     lastUpdated: '[DATE]',
     quickSummary: [
-      'Zero physical shipping or shipping fees — 100% digital electronic delivery.',
-      'Instant access via customer account dashboard and email delivery.',
-      'Fulfillment tracked and logged with strict timestamping.',
-      'Customer obligation to maintain local backup copies.',
+      'FreeFireShop sells exclusively digital game-related products and electronic services.',
+      'Delivery is 100% digital via email, WhatsApp, account credit, Player UID top-up, or user order panel.',
+      'Expected delivery window: within 5 minutes to 24 hours after successful payment.',
+      'No physical shipping or shipping fees apply.',
+      'Delays may occur due to game server maintenance, incorrect details, or payment verification.',
     ],
     sections: [
       {
-        id: 'electronic-delivery',
-        title: '1. Instant Electronic Delivery Model',
-        content: 'FFDigital operates exclusively on a digital-first fulfillment model. We do not dispatch any physical parcels, discs, boxes, or printed documentation. There are no shipping charges or handling fees. Delivery is conducted entirely online and is activated immediately upon successful payment verification.'
+        id: 'digital-nature',
+        title: '1. Digital Goods & Electronic Delivery Model',
+        content: 'FreeFireShop sells exclusively digital game-related products and electronic services (including in-game credits, top-ups, redeem vouchers, game scripts, downloadable developer assets, and digital utilities). No physical parcels, discs, boxes, or printed paperwork are shipped. There are zero shipping or handling fees.'
       },
       {
-        id: 'dashboard-access',
-        title: '2. Customer Account & Email Delivery',
-        content: 'Once payment is successfully completed, your purchased files are instantly made available in your customer account dashboard under the "My Downloads" tab. Simultaneously, an automated delivery confirmation email containing secure download links is sent to your registered email address. If you do not see the email, please check your spam folder or reach out to support.'
+        id: 'delivery-channels',
+        title: '2. Delivery Channels & Methods',
+        content: 'Fulfillment is conducted entirely online through the following channels as applicable to the product ordered: \n\n• Direct Player UID Top-Up / In-Game Credit: Automatically or manually credited to your player account using your submitted game UID. \n• Email Dispatch: Digital license keys, activation codes, or secure download links sent to your registered email address. \n• WhatsApp Dispatch: Instant notification and delivery codes sent to your registered mobile number upon request. \n• Customer Dashboard / Order Panel: Real-time order status, redeem codes, and download access accessible directly from your account page.'
       },
       {
-        id: 'delivery-logging',
-        title: '3. Download Integrity & Delivery Tracking',
-        content: 'To prevent fraud and maintain operational integrity, our server infrastructure logs each download action, including the IP address, timestamp, browser footprint, and download status. Successful file download records from our server logs are treated as definitive proof of delivery. Any claim of technical non-delivery must be verified against these system logs.'
+        id: 'delivery-timeframe',
+        title: '3. Expected Delivery Timelines',
+        content: 'Orders are typically fulfilled within 5 minutes to 24 hours following successful payment verification by our payment gateway. You will receive an instant electronic confirmation as soon as fulfillment is complete.'
       },
       {
-        id: 'local-backups',
-        title: '4. Customer Responsibility for Local Backups',
-        content: 'Purchasing a digital product from FFDigital grants you access to download the file version current at the time of purchase. While we aim to host download vaults indefinitely, we reserve the right to archive or replace older product files. It is your sole responsibility to download and keep secure local backup copies of your purchased files immediately after purchase.'
+        id: 'potential-delays',
+        title: '4. Potential Causes for Delivery Delays',
+        content: 'While we strive for near-instant fulfillment, delivery delays may occasionally occur due to: \n\n• Official game server downtime, maintenance, or game patch updates. \n• Incorrect or incomplete Player UID, nickname, or contact details submitted by the customer. \n• Payment gateway fraud check or banking verification hold. \n• Unexpected technical or API connection interruptions. \n\nIf your order has not been delivered within 24 hours, please contact our support team immediately for prioritized manual resolution.'
+      },
+      {
+        id: 'support-hours',
+        title: '5. Fulfillment Assistance & Contact',
+        content: 'Our fulfillment and support desk operates Monday to Saturday, 10:00 AM to 6:00 PM IST. For any delivery questions or status checks, email freefireshop.support@gmail.com or call +91 9793970031.'
       }
     ]
   },
@@ -178,7 +187,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'account-banning',
         title: '3. Consequences of Filing Unjustified Chargebacks',
-        content: 'Upon receipt of a chargeback notification from our payment processor (Easebuzz/UPI/Cards): (a) Your FFDigital account will be permanently suspended; (b) All license keys, updates, and access to download vaults will be immediately revoked; (c) Your IP and details will be blacklisted across our merchant network; (d) All historical purchases associated with your profile will be audited and deactivated.'
+        content: 'Upon receipt of a chargeback notification from our payment processor (Easebuzz/UPI/Cards): (a) Your FreeFireShop account will be permanently suspended; (b) All license keys, updates, and access to download vaults will be immediately revoked; (c) Your IP and details will be blacklisted across our merchant network; (d) All historical purchases associated with your profile will be audited and deactivated.'
       },
       {
         id: 'legal-recourse',
@@ -202,7 +211,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'zero-tolerance',
         title: '1. Zero Tolerance for Financial Fraud',
-        content: 'FFDigital maintains a strict zero-tolerance stance toward carding, stolen credit cards, fake payment receipts, or any other unauthorized payment methods. Any attempt to use compromised financial credentials to download our premium scripts, source code, or digital templates is treated as theft under the Indian Penal Code and Information Technology Act.'
+        content: 'FreeFireShop maintains a strict zero-tolerance stance toward carding, stolen credit cards, fake payment receipts, or any other unauthorized payment methods. Any attempt to use compromised financial credentials to download our premium scripts, source code, or digital templates is treated as theft under the Indian Penal Code and Information Technology Act.'
       },
       {
         id: 'security-monitoring',
@@ -224,7 +233,7 @@ const rawPolicyData: Record<string, Policy> = {
   privacy: {
     slug: 'privacy',
     title: 'Privacy Policy',
-    subtitle: 'A thorough legal statement detailing how FFDigital handles, stores, and protects personal customer information.',
+    subtitle: 'A thorough legal statement detailing how FreeFireShop handles, stores, and protects personal customer information.',
     lastUpdated: '[DATE]',
     quickSummary: [
       'Collected data is utilized strictly for digital delivery and accounting.',
@@ -246,7 +255,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'third-party-sharing',
         title: '3. Restricted Third-Party Data Sharing',
-        content: 'FFDigital does not sell, rent, trade, or share your contact info or transaction data with third-party advertising brokers or external marketers. Personal data is shared exclusively with necessary core infrastructure partners under strict confidentiality agreements. This includes our hosting server provider, transactional email dispatch service, and PCI-DSS Level 1 payment gateway (Easebuzz).'
+        content: 'FreeFireShop does not sell, rent, trade, or share your contact info or transaction data with third-party advertising brokers or external marketers. Personal data is shared exclusively with necessary core infrastructure partners under strict confidentiality agreements. This includes our hosting server provider, transactional email dispatch service, and PCI-DSS Level 1 payment gateway (Easebuzz).'
       },
       {
         id: 'data-security',
@@ -280,7 +289,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'essential-cookies',
         title: '2. Essential First-Party Cookies',
-        content: 'FFDigital uses essential first-party session cookies to manage core website services: (a) Shopping Cart Integrity: Remembering the digital products you have added while you browse other pages; (b) Account Authentication: Keeping you securely logged in to your download dashboard as you navigate; (c) Security Tokens: Shielding our checkout forms against Cross-Site Request Forgery (CSRF) attacks.'
+        content: 'FreeFireShop uses essential first-party session cookies to manage core website services: (a) Shopping Cart Integrity: Remembering the digital products you have added while you browse other pages; (b) Account Authentication: Keeping you securely logged in to your download dashboard as you navigate; (c) Security Tokens: Shielding our checkout forms against Cross-Site Request Forgery (CSRF) attacks.'
       },
       {
         id: 'no-tracking',
@@ -309,7 +318,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'proprietor-ownership',
         title: '1. Absolute Content & Design Ownership',
-        content: 'All files, digital products, templates, scripts, graphics, source codes, guides, and textual materials published on FFDigital are the exclusive intellectual property of the Proprietor, [OWNER FULL LEGAL NAME]. These assets are protected by Indian copyright laws, international treaties, and trademark regulations. Unlicensed reproduction or piracy is strictly prohibited.'
+        content: 'All files, digital products, templates, scripts, graphics, source codes, guides, and textual materials published on FreeFireShop are the exclusive intellectual property of the Proprietor, [OWNER FULL LEGAL NAME]. These assets are protected by Indian copyright laws, international treaties, and trademark regulations. Unlicensed reproduction or piracy is strictly prohibited.'
       },
       {
         id: 'no-commercial-resale',
@@ -319,7 +328,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'anti-piracy',
         title: '3. Anti-Piracy Monitoring',
-        content: 'We actively scan public digital networks, code-sharing forums, group-buy sites, and template platforms for copyrighted assets belonging to FFDigital. We apply technical markers inside our script source codes to trace leaked files back to the corresponding customer order and account.'
+        content: 'We actively scan public digital networks, code-sharing forums, group-buy sites, and template platforms for copyrighted assets belonging to FreeFireShop. We apply technical markers inside our script source codes to trace leaked files back to the corresponding customer order and account.'
       },
       {
         id: 'copyright-enforcement',
@@ -343,7 +352,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'license-grant',
         title: '1. Limited Single-User License Grant',
-        content: 'When you purchase a digital product (source code, script, template, utility, etc.) from FFDigital, you are not buying the underlying copyright or ownership. Instead, [OWNER FULL LEGAL NAME] grants you a limited, non-exclusive, non-transferable, revocable single-user license. This license allows you to download and use the product in accordance with these terms.'
+        content: 'When you purchase a digital product (source code, script, template, utility, etc.) from FreeFireShop, you are not buying the underlying copyright or ownership. Instead, [OWNER FULL LEGAL NAME] grants you a limited, non-exclusive, non-transferable, revocable single-user license. This license allows you to download and use the product in accordance with these terms.'
       },
       {
         id: 'permitted-uses',
@@ -358,7 +367,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'termination',
         title: '4. License Deactivation & Termination',
-        content: 'This license auto-terminates immediately if you violate any restriction. Upon termination: (a) You must destroy all local copies of the downloaded source files; (b) Your customer account on FFDigital will be closed; (c) You must immediately take down any website, project, or application utilizing our proprietary scripts or templates.'
+        content: 'This license auto-terminates immediately if you violate any restriction. Upon termination: (a) You must destroy all local copies of the downloaded source files; (b) Your customer account on FreeFireShop will be closed; (c) You must immediately take down any website, project, or application utilizing our proprietary scripts or templates.'
       }
     ]
   },
@@ -377,7 +386,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'authorized-behavior',
         title: '1. Authorized Use of Services',
-        content: 'You agree to use FFDigital and its secure dashboard strictly for authorized purposes (i.e., browsing available digital catalog listings, completing purchases, and downloading acquired assets for legitimate projects).'
+        content: 'You agree to use FreeFireShop and its secure dashboard strictly for authorized purposes (i.e., browsing available digital catalog listings, completing purchases, and downloading acquired assets for legitimate projects).'
       },
       {
         id: 'scraping-scrapers',
@@ -399,7 +408,7 @@ const rawPolicyData: Record<string, Policy> = {
   security: {
     slug: 'security',
     title: 'Account & Website Security Policy',
-    subtitle: 'Technical specifications, administrative safeguards, and user security responsibilities on FFDigital.',
+    subtitle: 'Technical specifications, administrative safeguards, and user security responsibilities on FreeFireShop.',
     lastUpdated: '[DATE]',
     quickSummary: [
       'Encryption protects user password hashes and customer session data.',
@@ -411,7 +420,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'encryption-standards',
         title: '1. Technical Security Measures',
-        content: 'FFDigital employs rigorous security measures to protect customer information. All interactive checkout workflows, login forms, and account settings are secured with active SSL/TLS encryption protocols. User account passwords are encrypted and hashed before being stored in our administrative database, ensuring even database managers cannot read raw passwords.'
+        content: 'FreeFireShop employs rigorous security measures to protect customer information. All interactive checkout workflows, login forms, and account settings are secured with active SSL/TLS encryption protocols. User account passwords are encrypted and hashed before being stored in our administrative database, ensuring even database managers cannot read raw passwords.'
       },
       {
         id: 'credential-safekeeping',
@@ -445,12 +454,12 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'as-is-basis',
         title: '1. Provided "As Is" and "As Available"',
-        content: 'All digital templates, scripts, source codes, PDF resources, video walkthroughs, and technical software sold on FFDigital are provided strictly on an "as is" and "as available" basis. The Proprietor makes no warranties, express or implied, regarding the continuous operation of products, compatibility with all future third-party frameworks, or complete error-free execution under custom setups.'
+        content: 'All digital templates, scripts, source codes, PDF resources, video walkthroughs, and technical software sold on FreeFireShop are provided strictly on an "as is" and "as available" basis. The Proprietor makes no warranties, express or implied, regarding the continuous operation of products, compatibility with all future third-party frameworks, or complete error-free execution under custom setups.'
       },
       {
         id: 'no-guarantee',
         title: '2. No Income or Business Guarantee',
-        content: 'FFDigital provides high-quality software utilities, development tools, and design packages. However, purchasing or utilizing our source files does not guarantee any specific financial return, web traffic, business expansion, or operational outcome. You are solely responsible for your own marketing, business administration, and software customization.'
+        content: 'FreeFireShop provides high-quality software utilities, development tools, and design packages. However, purchasing or utilizing our source files does not guarantee any specific financial return, web traffic, business expansion, or operational outcome. You are solely responsible for your own marketing, business administration, and software customization.'
       },
       {
         id: 'user-integration',
@@ -479,7 +488,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'legal-framework',
         title: '1. Redressal Framework & Indian Compliance',
-        content: 'In compliance with the Information Technology Act, 2000, and the Consumer Protection (E-Commerce) Rules, 2020, FFDigital has established a structured Grievance Redressal Mechanism to address customer complaints, cyber-fraud queries, and billing disputes in a lawful and transparent manner.'
+        content: 'In compliance with the Information Technology Act, 2000, and the Consumer Protection (E-Commerce) Rules, 2020, FreeFireShop has established a structured Grievance Redressal Mechanism to address customer complaints, cyber-fraud queries, and billing disputes in a lawful and transparent manner.'
       },
       {
         id: 'grievance-officer',
@@ -501,41 +510,76 @@ const rawPolicyData: Record<string, Policy> = {
   'contact-support': {
     slug: 'contact-support',
     title: 'Contact & Support Policy',
-    subtitle: 'Support hours, communication guidelines, and the operational boundaries of our developer assistance.',
+    subtitle: 'Support hours, communication guidelines, and customer assistance coordinates on FreeFireShop.',
     lastUpdated: '[DATE]',
     quickSummary: [
-      'Customer support available Mon-Fri, 10:00 AM to 6:00 PM IST.',
-      'Official contact coordinates: [SUPPORT EMAIL] and [BUSINESS PHONE].',
-      'Covers download bugs and product defects only.',
-      'Excludes free programming tutorials and custom database setup.',
+      'Customer support available Monday to Saturday, 10:00 AM to 6:00 PM IST.',
+      'Official contact coordinates: freefireshop.support@gmail.com and +91 9793970031.',
+      'Operated directly by Owner / Proprietor Prankrishna Das.',
+      'Assistance for order delivery, payment verification, and technical issues.',
     ],
     sections: [
       {
         id: 'support-hours',
-        title: '1. Standard Technical Support Hours',
-        content: 'Our support desk is operated directly by the Proprietor of FFDigital. Technical support and communication are available from Monday to Friday, 10:00 AM to 6:00 PM Indian Standard Time (IST). Tickets or emails received during weekends, national holidays, or off-hours will be queued and reviewed on the subsequent business day.'
+        title: '1. Official Customer Support Hours',
+        content: 'Our customer support desk is operated directly by Prankrishna Das, Sole Proprietor of FreeFireShop. Customer support is available from Monday to Saturday, 10:00 AM to 6:00 PM Indian Standard Time (IST). Queries received outside operational hours or on national holidays are queued and answered on the next business day.'
       },
       {
         id: 'contact-channels',
         title: '2. Official Contact Coordinates',
-        content: 'To receive technical assistance or submit purchase queries, please reach out through our official channels: \n\n• Primary Support Email: [SUPPORT EMAIL] \n• Customer Support Phone: [BUSINESS PHONE] \n• Principal Business Address: [FULL BUSINESS / PRINCIPAL ADDRESS] \n• Grievance Redressal: [GRIEVANCE EMAIL]'
+        content: 'To reach our team for assistance, order queries, or payment status: \n\n• Brand Name: FreeFireShop \n• Owner / Proprietor: Prankrishna Das \n• Primary Support Email: freefireshop.support@gmail.com \n• Customer Support Phone: +91 9793970031 \n• Operational Hours: Monday to Saturday, 10:00 AM to 6:00 PM IST \n• Registered Address: House no 417, Near Santosh Tea stall, Labour Chauraha, Shantipuram, Prayagraj, Uttar Pradesh - 211013, India \n• Permanent Address: 02 No Takimari, Mantadari, PO: Milanpally, Dist: Jalpaiguri, West Bengal - 735133, India'
       },
       {
         id: 'support-scope',
-        title: '3. Scope of Technical Support',
-        content: 'Our complimentary support is strictly limited to: (a) Resolving purchase validation and login bugs; (b) Refreshing expired or corrupted download links; (c) Investigating transaction processing issues; (d) Addressing built-in file bugs. We do NOT provide free customized programming, integration tutorials, host configuration help, or debugging for third-party scripts.'
+        title: '3. Scope of Support Services',
+        content: 'FreeFireShop provides assistance for: (a) In-game UID delivery status and top-up verification; (b) Payment gateway receipt verification and transaction inquiries; (c) Digital download links and redeem voucher delivery; (d) Processing valid refund requests as per our Refund Policy.'
       },
       {
         id: 'communication-code',
         title: '4. Professional Communication Code',
-        content: 'We treat all our customers with absolute respect and professionalism, and we expect the same in return. Any communication containing abusive language, threats, spamming of multiple tickets, or unfounded fraud accusations will result in immediate suspension of technical support and deactivation of download privileges.'
+        content: 'We strive to deliver helpful, prompt, and transparent customer service. We request customers to communicate politely with their order details and transaction reference. Abusive language, threats, or fraudulent claims are not tolerated.'
+      }
+    ]
+  },
+  'cancellation': {
+    slug: 'cancellation',
+    title: 'Cancellation Policy',
+    subtitle: 'Official guidelines and procedures regarding order cancellations for digital products and gaming services.',
+    lastUpdated: '[DATE]',
+    quickSummary: [
+      'Digital gaming products and services cannot be cancelled once digital delivery or top-up is completed.',
+      'Cancellation requests prior to fulfillment initiation can be submitted to support.',
+      'Request via email (freefireshop.support@gmail.com) or phone (+91 9793970031).',
+      'Approved cancellations are refunded to the original payment source within 5 to 7 working days.',
+      'Customer support available Monday to Saturday, 10:00 AM to 6:00 PM IST.',
+    ],
+    sections: [
+      {
+        id: 'cancellation-overview',
+        title: '1. Order Cancellation Parameters',
+        content: 'Because FreeFireShop specializes in instant digital game goods, Player UID top-ups, redeem codes, and digital developer scripts, fulfillment begins promptly upon payment confirmation. Once digital products or game credits have been electronically delivered or credited to your game account, cancellations are strictly not permitted.'
+      },
+      {
+        id: 'cancellation-eligibility',
+        title: '2. Pre-Fulfillment Cancellation Eligibility',
+        content: 'If you placed an order in error and delivery has NOT yet been initiated or processed, you may request an immediate order cancellation by contacting our support team within 30 minutes of payment confirmation.'
+      },
+      {
+        id: 'how-to-cancel',
+        title: '3. How to Submit a Cancellation Request',
+        content: 'To request a cancellation before delivery starts, contact us immediately: \n\n• Email: freefireshop.support@gmail.com \n• Phone: +91 9793970031 \n• Operational Hours: Monday to Saturday, 10:00 AM to 6:00 PM IST \n\nPlease provide your Order ID, Payment Proof (UTR/Transaction ID), and registered email or mobile number.'
+      },
+      {
+        id: 'cancellation-refund',
+        title: '4. Cancellation Refund Processing',
+        content: 'If your cancellation request is approved before delivery initiation, the full transaction amount will be refunded directly to your original payment method within 5 to 7 working days via our payment gateway (Easebuzz / CCAvenue).'
       }
     ]
   },
   'content': {
     slug: 'content',
     title: 'Content Policy',
-    subtitle: 'Official guidelines regarding digital file hosting, content integrity, and intellectual property on FFDigital.',
+    subtitle: 'Official guidelines regarding digital file hosting, content integrity, and intellectual property on FreeFireShop.',
     lastUpdated: '[DATE]',
     quickSummary: [
       'Declares ownership over all scripts, codes, graphics, and documentation.',
@@ -547,7 +591,7 @@ const rawPolicyData: Record<string, Policy> = {
       {
         id: 'content-ownership',
         title: '1. Content Integrity & Intellectual Property',
-        content: 'All digital products, source files, design layouts, documentation, visual images, and assets hosted on FFDigital are the copyright of the Proprietor. These digital assets are protected by the Indian Copyright Act of 1957. Unauthorized copying, standalone redistribution, or unlicensed usage of any hosted content is strictly forbidden.'
+        content: 'All digital products, source files, design layouts, documentation, visual images, and assets hosted on FreeFireShop are the copyright of the Proprietor. These digital assets are protected by the Indian Copyright Act of 1957. Unauthorized copying, standalone redistribution, or unlicensed usage of any hosted content is strictly forbidden.'
       },
       {
         id: 'license-and-usage',
@@ -564,29 +608,35 @@ const rawPolicyData: Record<string, Policy> = {
   'shipping-delivery': {
     slug: 'shipping-delivery',
     title: 'Shipping & Delivery Policy',
-    subtitle: 'Our transparent guidelines explaining digital-first electronic delivery schedules and download access.',
+    subtitle: 'Our transparent guidelines explaining digital-first electronic delivery schedules and game service fulfillment.',
     lastUpdated: '[DATE]',
     quickSummary: [
-      'Instant electronic provisioning upon payment confirmation — zero physical shipping.',
-      'Direct account dashboard access and automated download token delivery.',
-      'Permanent download logs track the receipt of all purchase orders.',
-      'Duty of the customer to preserve local backup copies.',
+      'FreeFireShop sells exclusively digital game-related products and electronic services.',
+      'Delivery is 100% digital via email, WhatsApp, account credit, Player UID top-up, or user order panel.',
+      'Expected delivery window: within 5 minutes to 24 hours after successful payment.',
+      'No physical shipping or shipping fees apply.',
+      'Delays may occur due to game server maintenance, incorrect details, or payment verification.',
     ],
     sections: [
       {
         id: 'digital-shipping',
-        title: '1. Electronic Shipping Model',
-        content: 'FFDigital specializes exclusively in downloadable software, scripts, and website templates. We do not ship physical packages, discs, or written manuals. Consequently, there are no physical shipping charges, import taxes, or delayed delivery schedules. Delivery is conducted entirely online.'
+        title: '1. Digital Goods & Electronic Delivery Model',
+        content: 'FreeFireShop sells exclusively digital game-related products and electronic services (including in-game credits, top-ups, redeem vouchers, game scripts, downloadable developer assets, and digital utilities). No physical parcels, discs, boxes, or printed paperwork are shipped. There are zero shipping or handling fees.'
       },
       {
         id: 'fulfillment',
-        title: '2. Delivery Timelines & Account Access',
-        content: 'Fulfillments are fully automated. Immediately after a successful checkout transaction, download links are provisioned directly to your active customer dashboard. A confirmation email with secure backup download tokens is also sent to your registered coordinates. Delivery is instant (completed within seconds of payment capture).'
+        title: '2. Delivery Channels & Timelines',
+        content: 'Delivery is executed online via Player UID top-up, email dispatch, WhatsApp delivery, or directly within your customer dashboard order panel. Typical delivery is completed within 5 minutes to 24 hours following payment confirmation.'
       },
       {
-        id: 'responsibility',
-        title: '3. Download Preservation & Backups',
-        content: 'Once file delivery is logged on our servers, it is considered completed. Please download your files and store a secure local backup copy immediately to ensure you retain access even during scheduled server maintenance.'
+        id: 'delays-disclaimer',
+        title: '3. Potential Causes for Delays',
+        content: 'Delays may occasionally occur due to official game publisher server outages, incorrect Player UID submitted by customer, bank verification holds, or technical system maintenance. If an order is delayed beyond 24 hours, contact support at freefireshop.support@gmail.com or +91 9793970031.'
+      },
+      {
+        id: 'support-info',
+        title: '4. Support Hours & Contact',
+        content: 'Our fulfillment and customer support operate Monday to Saturday, 10:00 AM to 6:00 PM IST. We are closed on Sundays and national holidays.'
       }
     ]
   }
@@ -594,12 +644,18 @@ const rawPolicyData: Record<string, Policy> = {
 
 const replacePlaceholders = (text: string): string => {
   return text
+    .replace(/FreeFireShop/g, 'FreeFireShop')
+    .replace(/Free Fire Shop/g, 'FreeFireShop')
     .replace(/\[OWNER FULL LEGAL NAME\]/g, 'Prankrishna Das')
-    .replace(/\[SUPPORT EMAIL\]/g, 'connectwithvexora@gmail.com')
-    .replace(/\[GRIEVANCE EMAIL\]/g, 'connectwithvexora@gmail.com')
+    .replace(/\[SUPPORT EMAIL\]/g, 'freefireshop.support@gmail.com')
+    .replace(/\[GRIEVANCE EMAIL\]/g, 'freefireshop.support@gmail.com')
+    .replace(/connectwithvexora@gmail.com/g, 'freefireshop.support@gmail.com')
     .replace(/\[BUSINESS PHONE\]/g, '+91 9793970031')
     .replace(/\[DATE\]/g, 'September 22, 2026')
-    .replace(/\[FULL BUSINESS \/ PRINCIPAL ADDRESS\]/g, 'Registered & Operating Address: House no 417, Near Santosh Tea stall, labour chauraha, shantipuram, Prayagraj, UTTAR PRADESH, Pin: 211013 (Permanent Address: 02 No Takimari, Mantadari, PO: Milanpally, Dist: Jalpaiguri, West Bengal - 735133, India)');
+    .replace(/Monday to Friday, 10:00 AM to 6:00 PM Indian Standard Time \(IST\)/g, 'Monday to Saturday, 10:00 AM to 6:00 PM IST')
+    .replace(/Mon-Fri, 10:00 AM - 6:00 PM IST/g, 'Monday to Saturday, 10:00 AM to 6:00 PM IST')
+    .replace(/Mon-Fri, 10:00 AM to 6:00 PM IST/g, 'Monday to Saturday, 10:00 AM to 6:00 PM IST')
+    .replace(/\[FULL BUSINESS \/ PRINCIPAL ADDRESS\]/g, 'Registered Address: House no 417, Near Santosh Tea stall, Labour Chauraha, Shantipuram, Prayagraj, Uttar Pradesh - 211013, India | Permanent Address: 02 No Takimari, Mantadari, PO: Milanpally, Dist: Jalpaiguri, West Bengal - 735133, India');
 };
 
 const processedPolicyData: Record<string, Policy> = {};
