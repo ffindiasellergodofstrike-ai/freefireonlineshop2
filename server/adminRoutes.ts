@@ -4,6 +4,7 @@ import { AuditLogger, generateRequestId } from './audit';
 import { z } from 'zod';
 import crypto from 'crypto';
 import multer from 'multer';
+import { isAllowedProductPreviewUrl } from './productPreview';
 
 export const adminRouter = Router();
 
@@ -16,6 +17,14 @@ const upload = multer({
 });
 
 // Zod schemas for validation
+const previewUrlSchema = z.union([z.literal(''), z.string().trim().max(2048)])
+  .optional()
+  .refine(
+    (value) => !value || isAllowedProductPreviewUrl(value),
+    'Live preview must use an HTTPS custom domain. Direct *.vercel.app URLs are not allowed.'
+  )
+  .transform((value) => value?.trim() || undefined);
+
 const productSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(2),
@@ -39,6 +48,15 @@ const productSchema = z.object({
   features: z.array(z.string()).optional(),
   requirements: z.array(z.string()).optional(),
   faqs: z.array(z.any()).optional(),
+  previewUrl: previewUrlSchema,
+}).superRefine((product, context) => {
+  if (product.previewUrl?.startsWith('/') && product.previewUrl !== `/demos/${product.id}/`) {
+    context.addIssue({
+      code: 'custom',
+      path: ['previewUrl'],
+      message: `Built-in preview path must match this product ID: /demos/${product.id}/`,
+    });
+  }
 });
 
 const couponSchema = z.object({

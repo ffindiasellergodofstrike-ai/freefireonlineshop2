@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { PRODUCTS } from '../src/data/products';
 import { ProductService } from '../src/services/ProductService';
 import { isBrowserSafeAssetUrl, mergeProductCatalog } from './productCatalog';
+import { isAllowedProductPreviewUrl, normalizeProductPreviewUrl } from './productPreview';
 
 test('recognizes only browser-loadable product asset URLs', () => {
   assert.equal(isBrowserSafeAssetUrl('/product-images/example.png'), true);
@@ -10,6 +12,56 @@ test('recognizes only browser-loadable product asset URLs', () => {
   assert.equal(isBrowserSafeAssetUrl('//untrusted.example/product.png'), false);
   assert.equal(isBrowserSafeAssetUrl('file:///var/task/product.png'), false);
   assert.equal(isBrowserSafeAssetUrl('javascript:alert(1)'), false);
+});
+
+test('accepts bundled product previews and custom HTTPS preview domains', () => {
+  assert.equal(isAllowedProductPreviewUrl('/demos/linknest-pro/'), true);
+  assert.equal(normalizeProductPreviewUrl('/demos/neura-ai/', 'neura-ai'), '/demos/neura-ai/');
+  assert.equal(normalizeProductPreviewUrl('/demos/neura-ai/', 'finora'), undefined);
+  assert.equal(isAllowedProductPreviewUrl('//untrusted.example/demo'), false);
+  assert.equal(isAllowedProductPreviewUrl('/demos/../api/'), false);
+  assert.equal(isAllowedProductPreviewUrl('/demos/linknest-pro/?redirect=1'), false);
+  assert.equal(isAllowedProductPreviewUrl('https://linknest-demo.example.com/app'), true);
+  assert.equal(isAllowedProductPreviewUrl('https://project.vercel.app'), false);
+  assert.equal(isAllowedProductPreviewUrl('https://vercel.app'), false);
+  assert.equal(isAllowedProductPreviewUrl('http://linknest-demo.example.com'), false);
+  assert.equal(isAllowedProductPreviewUrl('javascript:alert(1)'), false);
+  assert.equal(normalizeProductPreviewUrl(' https://linknest-demo.example.com/app#pricing '), 'https://linknest-demo.example.com/app');
+});
+
+test('removes unsafe preview URLs from the public catalog', () => {
+  const catalog = mergeProductCatalog([], [
+    { id: 'safe', status: 'published', previewUrl: 'https://demo.example.com' },
+    { id: 'hidden-provider', status: 'published', previewUrl: 'https://secret-project.vercel.app' },
+  ]);
+
+  assert.equal(catalog[0].previewUrl, 'https://demo.example.com/');
+  assert.equal(catalog[1].previewUrl, undefined);
+});
+
+test('keeps bundled previews tied to the matching product ID', () => {
+  const catalog = mergeProductCatalog(
+    [{ id: 'finora', status: 'active', previewUrl: '/demos/finora/' }],
+    [{ id: 'finora', status: 'published', previewUrl: '/demos/workhub/' }]
+  );
+
+  assert.equal(catalog[0].previewUrl, '/demos/finora/');
+});
+
+test('ships every built-in product with its own watermarked preview', () => {
+  for (const product of PRODUCTS) {
+    const expectedPreview = `/demos/${product.id}/`;
+    const brandName = product.title.split(' — ')[0];
+    const previewHtml = readFileSync(
+      new URL(`../public${expectedPreview}index.html`, import.meta.url),
+      'utf8'
+    );
+
+    assert.equal(product.previewUrl, expectedPreview);
+    assert.match(previewHtml, new RegExp(`${brandName} • Preview`));
+    assert.match(previewHtml, /preview-watermark\.css/);
+    assert.match(previewHtml, /Content-Security-Policy/);
+  }
 });
 
 test('merges static and Firebase products without dropping either catalog', () => {

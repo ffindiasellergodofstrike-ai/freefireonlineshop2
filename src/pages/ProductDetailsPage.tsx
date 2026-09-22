@@ -23,6 +23,8 @@ import {
   BookOpen,
   Lock,
   ChevronDown,
+  Loader2,
+  Maximize2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
@@ -120,8 +122,8 @@ export const ProductDetailsPage: React.FC = () => {
   const product = ProductService.getProductBySlug(slug) || ProductService.getProductBySlug(rawSlug);
 
   const quantity = 1;
-  const isDemoModalOpen = false;
-  const setIsDemoModalOpen = (val: boolean) => {};
+  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(true);
 
   if (!product) {
     return (
@@ -195,11 +197,14 @@ export const ProductDetailsPage: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
               <button
                 id="launch-interactive-demo-btn"
-                onClick={() => setIsDemoModalOpen(true)}
+                onClick={() => {
+                  setIsPreviewLoading(Boolean(product.previewUrl));
+                  setIsDemoModalOpen(true);
+                }}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold transition-all shadow-xs"
               >
                 <MonitorPlay className="w-4 h-4" />
-                <span>Product Overview & Specs</span>
+                <span>{product.previewUrl ? 'Open Live Demo Preview' : 'Product Overview & Specs'}</span>
               </button>
 
               <div className="flex items-center gap-2">
@@ -412,44 +417,92 @@ export const ProductDetailsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Product Overview Modal */}
+      {/* Sandboxed live preview / product overview modal */}
       {isDemoModalOpen && (
         <Modal
           isOpen={isDemoModalOpen}
           onClose={() => setIsDemoModalOpen(false)}
-          title={`Overview: ${product.title}`}
-          maxWidth="lg"
+          title={product.previewUrl ? `Live Demo: ${product.title}` : `Overview: ${product.title}`}
+          maxWidth={product.previewUrl ? '6xl' : 'lg'}
         >
-          <div className="space-y-6 py-2">
-            <div className="aspect-16/10 rounded-2xl overflow-hidden bg-slate-900">
-              <ProductImage product={product} className="w-full h-full object-cover" />
-            </div>
+          {product.previewUrl ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Interactive product demo</p>
+                  <p className="mt-0.5 text-xs text-slate-500">Preview environment • actions here do not affect your purchase</p>
+                </div>
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-xs ring-1 ring-slate-200">
+                  <Maximize2 className="h-3.5 w-3.5" />
+                  Responsive preview
+                </div>
+              </div>
 
-            <div className="space-y-3">
-              <h4 className="font-bold text-slate-900 text-base">Digital Delivery & Verification</h4>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                This digital product is delivered electronically upon verified payment. Access includes complete files, technical documentation, and lifetime version updates.
+              <div className="relative h-[70dvh] min-h-[460px] overflow-hidden rounded-2xl border border-slate-300 bg-slate-950 shadow-inner">
+                {isPreviewLoading && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950 text-white">
+                    <div className="flex items-center gap-3 text-sm font-semibold">
+                      <Loader2 className="h-5 w-5 animate-spin text-blue-400" />
+                      Loading secure preview…
+                    </div>
+                  </div>
+                )}
+                <iframe
+                  src={product.previewUrl}
+                  title={`${product.title} live demo preview`}
+                  className="h-full w-full bg-white"
+                  sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
+                  referrerPolicy="no-referrer"
+                  loading="lazy"
+                  onLoad={() => setIsPreviewLoading(false)}
+                />
+
+                <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden="true">
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-20 whitespace-nowrap text-4xl font-black uppercase tracking-[0.25em] text-slate-900/8 sm:text-6xl">
+                    {product.title} • Preview
+                  </div>
+                  <div className="absolute bottom-3 right-3 rounded-lg border border-white/30 bg-slate-950/70 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-lg backdrop-blur-sm">
+                    Demo Preview • Not for redistribution
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-center text-[11px] leading-relaxed text-slate-500">
+                This demo runs inside a restricted preview frame. Some sign-in, payment, download, or new-window actions may be disabled.
               </p>
             </div>
+          ) : (
+            <div className="space-y-6 py-2">
+              <div className="aspect-16/10 rounded-2xl overflow-hidden bg-slate-900">
+                <ProductImage product={product} className="w-full h-full object-cover" />
+              </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-              <button
-                onClick={() => setIsDemoModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-semibold"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  setIsDemoModalOpen(false);
-                  handleAddToCart();
-                }}
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
-              >
-                Add to Cart (${product.price.toFixed(2)})
-              </button>
+              <div className="space-y-3">
+                <h4 className="font-bold text-slate-900 text-base">Digital Delivery & Verification</h4>
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  This digital product is delivered electronically upon verified payment. Access includes complete files, technical documentation, and lifetime version updates.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  onClick={() => setIsDemoModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-semibold"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    setIsDemoModalOpen(false);
+                    handleAddToCart();
+                  }}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+                >
+                  Add to Cart (${product.price.toFixed(2)})
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </Modal>
       )}
     </div>
