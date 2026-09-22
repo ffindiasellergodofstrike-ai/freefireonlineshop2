@@ -22,9 +22,8 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
 import { FAQPage } from './pages/FAQPage';
-import { TermsPage } from './pages/TermsPage';
-import { PrivacyPage } from './pages/PrivacyPage';
-import { RefundPage } from './pages/RefundPage';
+import { LegalPoliciesPage } from './pages/LegalPoliciesPage';
+import { PolicyDetailsPage } from './pages/policies/PolicyDetailsPage';
 import { AdminPage } from './pages/AdminPage';
 
 const AppContent: React.FC = () => {
@@ -42,6 +41,10 @@ const AppContent: React.FC = () => {
     }
     if (currentPath.startsWith('/category/')) {
       return <CategoryPage />;
+    }
+    if (currentPath.startsWith('/policies/')) {
+      const slug = currentPath.substring('/policies/'.length);
+      return <PolicyDetailsPage slug={slug} />;
     }
 
     switch (currentPath) {
@@ -75,11 +78,13 @@ const AppContent: React.FC = () => {
       case '/faq':
         return <FAQPage />;
       case '/terms':
-        return <TermsPage />;
+        return <PolicyDetailsPage slug="terms" />;
       case '/privacy':
-        return <PrivacyPage />;
+        return <PolicyDetailsPage slug="privacy" />;
       case '/refund':
-        return <RefundPage />;
+        return <PolicyDetailsPage slug="refund" />;
+      case '/policies':
+        return <LegalPoliciesPage />;
       case '/admin':
         return <AdminPage />;
       default:

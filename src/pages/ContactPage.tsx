@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Headphones,
   HelpCircle,
+  Phone,
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 
@@ -56,8 +57,8 @@ export const ContactPage: React.FC = () => {
               <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-100 flex items-start gap-3">
                 <Mail className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="font-bold text-slate-900">Email Engineering Desk</h4>
-                  <p className="text-slate-500 text-xs">support@freefireshop.com</p>
+                  <h4 className="font-bold text-slate-900">Email Support Desk</h4>
+                  <p className="text-slate-500 text-xs">connectwithvexora@gmail.com</p>
                   <span className="text-[11px] text-blue-700 font-semibold block mt-1">
                     Avg. Response: &lt; 4 Hours
                   </span>
@@ -65,18 +66,13 @@ export const ContactPage: React.FC = () => {
               </div>
 
               <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 flex items-start gap-3">
-                <Discord className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                <Phone className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="font-bold text-slate-900">Developer Discord Guild</h4>
-                  <p className="text-slate-500 text-xs">Live community & real-time debug channels</p>
-                  <a
-                    href="https://discord.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] text-indigo-700 font-semibold block mt-1 hover:underline"
-                  >
-                    Join 12,000+ Members →
-                  </a>
+                  <h4 className="font-bold text-slate-900">Customer Helpline</h4>
+                  <p className="text-slate-500 text-xs">+91 9793970031</p>
+                  <span className="text-[11px] text-indigo-700 font-semibold block mt-1">
+                    Support Hours: Mon-Sat, 10 AM - 6 PM IST
+                  </span>
                 </div>
               </div>
 

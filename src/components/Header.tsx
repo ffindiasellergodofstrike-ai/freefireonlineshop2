@@ -136,6 +136,16 @@ export const Header: React.FC = () => {
               </button>
 
               <button
+                id="nav-policies"
+                onClick={() => navigate('/policies')}
+                className={`px-3 py-2 rounded-lg transition-colors ${
+                  isCurrent('/policies') ? 'text-blue-600 bg-blue-50/80' : 'text-slate-600 hover:text-blue-600 hover:bg-slate-50'
+                }`}
+              >
+                Policies
+              </button>
+
+              <button
                 id="nav-contact"
                 onClick={() => navigate('/contact')}
                 className={`px-3 py-2 rounded-lg transition-colors ${

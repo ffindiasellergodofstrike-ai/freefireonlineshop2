@@ -104,37 +104,62 @@ export const HomePage: React.FC = () => {
         )}
       </section>
 
-      {/* Value Propositions - Integrated Layout */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 sm:gap-12">
-          <div className="space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <ShieldCheck className="w-6 h-6" />
+      {/* Value Propositions - Asymmetrical Modern Layout */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 border-t border-slate-100 mt-12">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16 items-start">
+          {/* Left Column: Bold statement */}
+          <div className="lg:col-span-4 space-y-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-xs font-bold uppercase tracking-wider">
+              Store Guarantee
             </div>
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Authorized Digital Goods</h3>
-            <p className="text-xs text-slate-500 leading-relaxed font-medium">
-              We only distribute digital products that we are fully authorized to sell, ensuring complete licensing confidence and legal peace of mind.
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-tight">
+              Direct & Authorized <br className="hidden sm:inline" />Digital Distribution
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 leading-relaxed font-medium">
+              We focus on absolute legal compliance, certified authenticity, and automated delivery frameworks to offer the highest grade customer checkout experience.
             </p>
           </div>
 
-          <div className="space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <Zap className="w-6 h-6" />
+          {/* Right Column: Custom Interactive Badges */}
+          <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-6">
+            {/* Box 1 */}
+            <div className="p-6 rounded-2xl bg-slate-50/50 hover:bg-slate-50 border border-slate-100/80 transition-colors space-y-4 group">
+              <div className="w-10 h-10 rounded-xl bg-blue-100/70 text-blue-700 flex items-center justify-center transition-transform group-hover:scale-105 duration-250">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest">Authorized Goods</h3>
+                <p className="text-xxs sm:text-xs text-slate-500 leading-relaxed font-medium">
+                  We only distribute digital products that we are fully authorized to sell, ensuring complete licensing confidence and legal peace of mind.
+                </p>
+              </div>
             </div>
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Instant Electronic Delivery</h3>
-            <p className="text-xs text-slate-500 leading-relaxed font-medium">
-              Receive instant access to downloadable files, secure tokens, and documentation immediately upon payment verification.
-            </p>
-          </div>
 
-          <div className="space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-              <RefreshCw className="w-6 h-6" />
+            {/* Box 2 */}
+            <div className="p-6 rounded-2xl bg-slate-50/50 hover:bg-slate-50 border border-slate-100/80 transition-colors space-y-4 group">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100/70 text-emerald-700 flex items-center justify-center transition-transform group-hover:scale-105 duration-250">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest">Instant Delivery</h3>
+                <p className="text-xxs sm:text-xs text-slate-500 leading-relaxed font-medium">
+                  Receive instant access to downloadable files, secure tokens, and documentation immediately upon payment verification.
+                </p>
+              </div>
             </div>
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Maintenance & Updates</h3>
-            <p className="text-xs text-slate-500 leading-relaxed font-medium">
-              Access maintenance releases, security patches, and future product enhancements directly from your account vault.
-            </p>
+
+            {/* Box 3 */}
+            <div className="p-6 rounded-2xl bg-slate-50/50 hover:bg-slate-50 border border-slate-100/80 transition-colors space-y-4 group">
+              <div className="w-10 h-10 rounded-xl bg-purple-100/70 text-purple-700 flex items-center justify-center transition-transform group-hover:scale-105 duration-250">
+                <RefreshCw className="w-5 h-5" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest">Maintenance & Updates</h3>
+                <p className="text-xxs sm:text-xs text-slate-500 leading-relaxed font-medium">
+                  Access maintenance releases, security patches, and future product enhancements directly from your account vault.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>

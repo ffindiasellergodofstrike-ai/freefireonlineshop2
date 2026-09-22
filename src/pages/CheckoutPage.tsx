@@ -528,13 +528,33 @@ export const CheckoutPage: React.FC = () => {
                   id="agree-terms"
                   checked={agreeTerms}
                   onChange={(e) => setAgreeTerms(e.target.checked)}
-                  className="mt-0.5 rounded text-blue-600 accent-blue-600"
+                  className="mt-1 rounded text-blue-600 accent-blue-600 w-4 h-4 cursor-pointer shrink-0"
                 />
-                <label htmlFor="agree-terms" className="text-xs text-slate-600 leading-snug cursor-pointer">
-                  I agree to the FreeFireShop{' '}
-                  <a href="#/terms" className="text-blue-600 font-semibold underline">
-                    Terms of Service
-                  </a>
+                <label htmlFor="agree-terms" className="text-xs text-slate-600 leading-relaxed cursor-pointer select-none">
+                  I explicitly acknowledge and agree to the FFDigital{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/terms')}
+                    className="text-blue-600 font-bold hover:underline inline-block align-baseline"
+                  >
+                    Terms & Conditions
+                  </button>
+                  ,{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/refund')}
+                    className="text-blue-600 font-bold hover:underline inline-block align-baseline"
+                  >
+                    Refund Policy
+                  </button>
+                  , and{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/policies/delivery')}
+                    className="text-blue-600 font-bold hover:underline inline-block align-baseline"
+                  >
+                    Digital Delivery Policy
+                  </button>
                   .
                 </label>
               </div>

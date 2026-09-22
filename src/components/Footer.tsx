@@ -81,9 +81,9 @@ export const Footer: React.FC = () => {
 
       {/* Main Navigation & Brand Info */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-10">
           {/* Brand Col */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className="lg:col-span-4 space-y-4">
             <div
               onClick={() => navigate('/')}
               className="flex items-center gap-2.5 cursor-pointer group w-fit"
@@ -134,13 +134,13 @@ export const Footer: React.FC = () => {
           </div>
 
           {/* Quick Navigation */}
-          <div className="space-y-3">
+          <div className="lg:col-span-4 space-y-4">
             <h4 className="text-xs font-bold uppercase tracking-wider text-white">Quick Links</h4>
             <ul className="space-y-2 text-xs">
               <li>
                 <button
                   onClick={() => navigate('/')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
                 >
                   Home
                 </button>
@@ -148,7 +148,7 @@ export const Footer: React.FC = () => {
               <li>
                 <button
                   onClick={() => navigate('/products')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
                 >
                   All Products
                 </button>
@@ -156,46 +156,23 @@ export const Footer: React.FC = () => {
               <li>
                 <button
                   onClick={() => navigate('/search')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
                 >
                   Search Store
-                </button>
-              </li>
-            </ul>
-          </div>
-
-          {/* Support & Account */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white">Customer Hub</h4>
-            <ul className="space-y-2 text-xs">
-              <li>
-                <button
-                  onClick={() => navigate('/about')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
-                >
-                  About Our Store
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => navigate('/contact')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
-                >
-                  Contact Support
                 </button>
               </li>
               <li>
                 <button
                   onClick={() => navigate('/faq')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
                 >
-                  Frequently Asked Questions
+                  Help & FAQs
                 </button>
               </li>
               <li>
                 <button
                   onClick={() => navigate('/account')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
                 >
                   My Account & Orders
                 </button>
@@ -203,7 +180,7 @@ export const Footer: React.FC = () => {
               <li>
                 <button
                   onClick={() => navigate('/wishlist')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
                 >
                   Saved Wishlist
                 </button>
@@ -211,42 +188,67 @@ export const Footer: React.FC = () => {
             </ul>
           </div>
 
-          {/* Legal & Trust */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white">Policies</h4>
+          {/* Company & Legal */}
+          <div className="lg:col-span-4 space-y-4">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-white">Company & Legal</h4>
             <ul className="space-y-2 text-xs">
               <li>
                 <button
-                  onClick={() => navigate('/terms')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
+                  onClick={() => navigate('/about')}
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
                 >
-                  Terms & Conditions
+                  About Us
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => navigate('/contact')}
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                >
+                  Contact
                 </button>
               </li>
               <li>
                 <button
                   onClick={() => navigate('/privacy')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
                 >
                   Privacy Policy
                 </button>
               </li>
               <li>
                 <button
-                  onClick={() => navigate('/refund')}
-                  className="hover:text-white transition-colors text-slate-400 hover:underline"
+                  onClick={() => navigate('/terms')}
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
                 >
-                  Digital Refund Policy
+                  Terms of Service
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => navigate('/policies/content')}
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                >
+                  Content Policy
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => navigate('/refund')}
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                >
+                  Refund Policy
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => navigate('/policies/shipping-delivery')}
+                  className="hover:text-white transition-colors text-slate-400 hover:underline text-left"
+                >
+                  Shipping & Delivery
                 </button>
               </li>
             </ul>
-
-            <div className="pt-2">
-              <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                <Lock className="w-3.5 h-3.5 text-emerald-400" />
-                <span>SSL Encrypted Digital Delivery</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>

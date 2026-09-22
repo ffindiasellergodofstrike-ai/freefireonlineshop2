@@ -100,7 +100,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       <div className="p-3 sm:p-5 flex-1 flex flex-col justify-between">
         <div>
           {/* Title */}
-          <h3 className="font-bold text-slate-900 text-xs sm:text-sm md:text-base lg:text-lg leading-snug group-hover:text-blue-600 transition-colors line-clamp-2 mb-1 sm:mb-1.5">
+          <h3 className="font-extrabold text-slate-900 text-sm sm:text-base md:text-lg leading-snug group-hover:text-blue-600 transition-colors line-clamp-2 mb-1 sm:mb-1.5 tracking-tight">
             {product.title}
           </h3>
 
@@ -114,7 +114,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             {product.tags.slice(0, 2).map((tag, idx) => (
               <span
                 key={idx}
-                className="text-[8px] sm:text-[9.5px] px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase tracking-wider border border-slate-200/40 shrink-0 whitespace-nowrap"
+                className="text-[8px] sm:text-[9.5px] px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase tracking-wider border border-slate-200/40 truncate max-w-[110px] sm:max-w-[150px]"
               >
                 {tag}
               </span>
