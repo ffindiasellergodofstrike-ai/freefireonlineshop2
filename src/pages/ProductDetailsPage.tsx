@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldCheck,
@@ -23,7 +23,10 @@ import {
   BookOpen,
   Lock,
   ChevronDown,
+  ExternalLink,
+  Loader2,
   Maximize2,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
@@ -122,6 +125,19 @@ export const ProductDetailsPage: React.FC = () => {
 
   const quantity = 1;
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
+  const [previewLoadStatus, setPreviewLoadStatus] = useState<'loading' | 'ready' | 'slow'>('loading');
+  const [previewReloadKey, setPreviewReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!isDemoModalOpen || !product?.previewUrl) return;
+
+    setPreviewLoadStatus('loading');
+    const slowLoadTimer = window.setTimeout(() => {
+      setPreviewLoadStatus((current) => current === 'loading' ? 'slow' : current);
+    }, 8000);
+
+    return () => window.clearTimeout(slowLoadTimer);
+  }, [isDemoModalOpen, previewReloadKey, product?.previewUrl]);
 
   if (!product) {
     return (
@@ -155,6 +171,21 @@ export const ProductDetailsPage: React.FC = () => {
       navigator.clipboard.writeText(window.location.href);
       showToast('success', 'Link Copied', 'Product URL copied to clipboard.');
     }
+  };
+
+  const handlePreviewLoad = (event: React.SyntheticEvent<HTMLIFrameElement>) => {
+    if (!product.previewUrl) return;
+
+    const previewUrl = new URL(product.previewUrl, window.location.href);
+    if (previewUrl.origin === window.location.origin) {
+      const previewDocument = event.currentTarget.contentDocument;
+      if (!previewDocument?.documentElement || !previewDocument.body?.childElementCount) {
+        setPreviewLoadStatus('slow');
+        return;
+      }
+    }
+
+    setPreviewLoadStatus('ready');
   };
 
   const faqsList: FAQItem[] = product.faqs || [
@@ -195,7 +226,10 @@ export const ProductDetailsPage: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
               <button
                 id="launch-interactive-demo-btn"
-                onClick={() => setIsDemoModalOpen(true)}
+                onClick={() => {
+                  setPreviewLoadStatus('loading');
+                  setIsDemoModalOpen(true);
+                }}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold transition-all shadow-xs"
               >
                 <MonitorPlay className="w-4 h-4" />
@@ -436,13 +470,67 @@ export const ProductDetailsPage: React.FC = () => {
               </div>
 
               <div className="relative h-[clamp(20rem,58dvh,35rem)] sm:h-[70dvh] sm:min-h-[460px] overflow-hidden rounded-xl sm:rounded-2xl border border-slate-300 bg-slate-950 shadow-inner">
+                {previewLoadStatus === 'loading' && (
+                  <div
+                    className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950 text-white"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div className="flex flex-col items-center gap-3 px-6 text-center">
+                      <Loader2 className="h-7 w-7 animate-spin text-blue-400" />
+                      <div>
+                        <p className="text-sm font-bold">Loading interactive preview…</p>
+                        <p className="mt-1 text-xs text-slate-400">Large demos may take a moment on mobile networks.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {previewLoadStatus === 'slow' && (
+                  <div
+                    className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/95 px-5 text-white"
+                    role="alert"
+                  >
+                    <div className="max-w-sm text-center">
+                      <p className="text-sm font-bold">The preview is taking longer than expected.</p>
+                      <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
+                        Check your connection, retry inside the preview, or open the demo directly.
+                      </p>
+                      <div className="mt-4 flex flex-wrap justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPreviewLoadStatus('loading');
+                            setPreviewReloadKey((current) => current + 1);
+                          }}
+                          className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                          Retry preview
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => window.open(product.previewUrl, '_blank', 'noopener,noreferrer')}
+                          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          Open directly
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <iframe
+                  key={`${product.previewUrl}-${previewReloadKey}`}
                   src={product.previewUrl}
                   title={`${product.title} live demo preview`}
                   className="h-full w-full bg-white"
                   sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
                   referrerPolicy="no-referrer"
                   loading="eager"
+                  onLoad={handlePreviewLoad}
+                  onError={() => setPreviewLoadStatus('slow')}
                 />
 
                 <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden="true">
