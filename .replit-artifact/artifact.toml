@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "FreeFire Online Shop"
+description = "A digital product storefront with customer authentication, product browsing, checkout, orders, and secure downloads."
+version = "1.0.0"
+id = "artifacts/freefire-online-shop"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 26126
+
+[services.development]
+run = "pnpm --filter @workspace/freefire-online-shop run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/freefire-online-shop", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/freefire-online-shop/dist"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26126"
+BASE_PATH = "/"

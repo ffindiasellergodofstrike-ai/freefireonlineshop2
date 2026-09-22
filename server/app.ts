@@ -1,0 +1,892 @@
+import express, { Request, Response, NextFunction } from 'express';
+import path from 'path';
+import crypto from 'crypto';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import cors from 'cors';
+import { AuthServiceServer } from './auth';
+import { FirebaseRtdb } from './firebaseRtdb';
+import { AuditLogger, generateRequestId } from './audit';
+import { SecureFileManager } from './secureFiles';
+import { PRODUCTS, COUPONS } from '../src/data/products';
+import { adminRouter } from './adminRoutes';
+import { runServerSeed } from './seed';
+
+// Run initial seed on startup
+runServerSeed().catch(err => console.warn('Startup seed error:', err));
+
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+const EASEBUZZ_KEY = process.env.EASEBUZZ_KEY || '';
+const EASEBUZZ_SALT = process.env.EASEBUZZ_SALT || '';
+const EASEBUZZ_ENV = process.env.EASEBUZZ_ENV || 'test';
+const CRON_SECRET = process.env.CRON_SECRET || '';
+
+const EASEBUZZ_BASE_URL = EASEBUZZ_ENV === 'prod' 
+  ? 'https://pay.easebuzz.in' 
+  : 'https://testpay.easebuzz.in';
+
+const easebuzzHash = (data: string): string => {
+  return crypto.createHash('sha512').update(data).digest('hex');
+};
+
+const verifyEasebuzzHash = (params: any, salt: string): boolean => {
+  const { hash, status, udf10, udf9, udf8, udf7, udf6, udf5, udf4, udf3, udf2, udf1, email, firstname, productinfo, amount, txnid, key } = params;
+  const hashString = `${salt}|${status}|${udf10 || ''}|${udf9 || ''}|${udf8 || ''}|${udf7 || ''}|${udf6 || ''}|${udf5 || ''}|${udf4 || ''}|${udf3 || ''}|${udf2 || ''}|${udf1 || ''}|${email || ''}|${firstname || ''}|${productinfo || ''}|${amount || ''}|${txnid || ''}|${key || ''}`;
+  const calculatedHash = easebuzzHash(hashString);
+  try {
+    return crypto.timingSafeEqual(Buffer.from(hash || ''), Buffer.from(calculatedHash));
+  } catch {
+    return false;
+  }
+};
+
+export interface AuthenticatedRequest extends Request {
+  userId?: string;
+  userEmail?: string;
+  username?: string;
+}
+
+export const app = express();
+
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
+app.use(cors({
+  origin: APP_URL,
+  credentials: true,
+}));
+
+app.use(cookieParser());
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// RTDB-backed Auth Rate Limiter
+const authRateLimiter = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ip = (req.ip || req.headers['x-forwarded-for'] as string || 'unknown').replace(/[\.\/]/g, '_');
+    const now = Date.now();
+    const windowMs = 15 * 60 * 1000;
+    const maxAttempts = 20;
+
+    const key = `rateLimits/${ip}`;
+    const record = await FirebaseRtdb.get<{ count: number; resetTime: number }>(key);
+
+    if (!record || now > record.resetTime) {
+      await FirebaseRtdb.set(key, { count: 1, resetTime: now + windowMs });
+      return next();
+    }
+
+    if (record.count >= maxAttempts) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many authentication attempts. Please try again after 15 minutes.',
+      });
+    }
+
+    record.count += 1;
+    await FirebaseRtdb.set(key, record);
+    next();
+  } catch {
+    next();
+  }
+};
+
+// Authentication Middleware via Opaque Session Cookie "sid"
+const requireAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const sid = req.cookies?.sid;
+  if (!sid) {
+    return res.status(401).json({ success: false, message: 'Authentication session required.' });
+  }
+
+  const payload = await AuthServiceServer.verifyOpaqueSession(sid);
+  if (!payload || !payload.userId) {
+    res.clearCookie('sid', { path: '/' });
+    return res.status(401).json({ success: false, message: 'Invalid or expired session. Please log in again.' });
+  }
+
+  req.userId = payload.userId;
+  req.userEmail = payload.email;
+  req.username = payload.username;
+  next();
+};
+
+const requireAdmin = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  await requireAuth(req, res, async () => {
+    try {
+      const profile = await FirebaseRtdb.getUserProfile(req.userId!);
+      if (!profile || profile.role !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Administrative privileges required for this action.' });
+      }
+      next();
+    } catch {
+      return res.status(403).json({ success: false, message: 'Administrative privileges required for this action.' });
+    }
+  });
+};
+
+// ============================================
+// SYSTEM & HEALTH ENDPOINTS
+// ============================================
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.get('/api/firebase-status', async (req: Request, res: Response) => {
+  const status = await FirebaseRtdb.testConnection();
+  res.json({
+    status: 'ok',
+    firebase: {
+      databaseUrl: status.url,
+      connected: status.connected,
+      mode: status.mode,
+      error: status.error,
+    },
+  });
+});
+
+// Public Product API (RTDB with fallback to static PRODUCTS)
+app.get('/api/products', async (req: Request, res: Response) => {
+  try {
+    const products = await FirebaseRtdb.getAllProducts();
+    const activeProducts = products && products.length > 0 
+      ? products.filter((p: any) => p.status !== 'archived')
+      : PRODUCTS;
+    res.json({ success: true, products: activeProducts });
+  } catch {
+    res.json({ success: true, products: PRODUCTS });
+  }
+});
+
+app.get('/api/products/:slugOrId', async (req: Request, res: Response) => {
+  try {
+    const identifier = req.params.slugOrId.toLowerCase();
+    const products = await FirebaseRtdb.getAllProducts();
+    const list = products && products.length > 0 ? products : PRODUCTS;
+    const found = list.find((p: any) => p.id.toLowerCase() === identifier || p.slug.toLowerCase() === identifier);
+    if (!found) {
+      return res.status(404).json({ success: false, message: 'Product not found.' });
+    }
+    res.json({ success: true, product: found });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || 'Failed to fetch product.' });
+  }
+});
+
+// Mount Admin Router with requireAdmin
+app.use('/api/admin', requireAdmin, adminRouter);
+
+// ============================================
+// AUTH ENDPOINTS (OPAQUE SESSIONS + COOKIES)
+// ============================================
+app.post('/api/auth/register', authRateLimiter, async (req, res) => {
+  try {
+    const { mobile, email, password, confirmPassword, name } = req.body;
+    const result = await AuthServiceServer.register({ mobile, email, password, confirmPassword, name });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    const rawToken = await AuthServiceServer.createOpaqueSession(
+      result.user.id,
+      result.user.email,
+      result.user.username,
+      req.ip,
+      req.headers['user-agent']
+    );
+
+    res.cookie('sid', rawToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production' || req.secure,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.status(201).json({ success: true, message: result.message, user: result.user });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Registration failed.' });
+  }
+});
+
+app.post('/api/auth/login', authRateLimiter, async (req, res) => {
+  try {
+    const { identifier, password } = req.body;
+    const result = await AuthServiceServer.login(identifier, password);
+
+    if (!result.success) {
+      return res.status(401).json(result);
+    }
+
+    const rawToken = await AuthServiceServer.createOpaqueSession(
+      result.user.id,
+      result.user.email,
+      result.user.username,
+      req.ip,
+      req.headers['user-agent']
+    );
+
+    res.cookie('sid', rawToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production' || req.secure,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({ success: true, message: 'Login successful.', user: result.user });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Invalid login credentials.' });
+  }
+});
+
+app.post('/api/auth/forgot-password', authRateLimiter, async (req, res) => {
+  try {
+    const { email, mobile, newPassword, confirmNewPassword } = req.body;
+    const result = await AuthServiceServer.resetPasswordWithEmailAndMobile({ email, mobile, newPassword, confirmNewPassword });
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Password reset failed.' });
+  }
+});
+
+app.get('/api/auth/me', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const profile = await FirebaseRtdb.getUserProfile(req.userId!);
+    if (!profile) {
+      return res.status(404).json({ success: false, message: 'User profile not found.' });
+    }
+    res.json({ success: true, user: profile });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to fetch profile.' });
+  }
+});
+
+app.post('/api/auth/logout', async (req: AuthenticatedRequest, res) => {
+  try {
+    const sid = req.cookies?.sid;
+    if (sid) {
+      await AuthServiceServer.destroyOpaqueSession(sid);
+    }
+    res.clearCookie('sid', { path: '/' });
+    res.json({ success: true, message: 'Logged out successfully.' });
+  } catch {
+    res.clearCookie('sid', { path: '/' });
+    res.json({ success: true, message: 'Logged out successfully.' });
+  }
+});
+
+// ============================================
+// USER SYNC, CART, WISHLIST & ORDERS
+// ============================================
+app.get('/api/user/sync-all', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const [profile, cart, wishlist, orders, downloads, settings] = await Promise.all([
+      FirebaseRtdb.getUserProfile(userId),
+      FirebaseRtdb.getUserCart(userId),
+      FirebaseRtdb.getUserWishlist(userId),
+      FirebaseRtdb.getUserOrders(userId),
+      FirebaseRtdb.getUserDownloads(userId),
+      FirebaseRtdb.getUserSettings(userId),
+    ]);
+    res.json({ success: true, data: { profile, cart, wishlist, orders, downloads, settings } });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to sync user data.' });
+  }
+});
+
+app.get('/api/user/cart', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const items = await FirebaseRtdb.getUserCart(req.userId!);
+    res.json({ success: true, items });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to fetch cart.' });
+  }
+});
+
+app.post('/api/user/cart', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { items } = req.body;
+    await FirebaseRtdb.setUserCart(req.userId!, items || []);
+    res.json({ success: true, items });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to save cart.' });
+  }
+});
+
+app.get('/api/user/wishlist', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const items = await FirebaseRtdb.getUserWishlist(req.userId!);
+    res.json({ success: true, items });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to fetch wishlist.' });
+  }
+});
+
+app.post('/api/user/wishlist', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { items } = req.body;
+    await FirebaseRtdb.setUserWishlist(req.userId!, items || []);
+    res.json({ success: true, items });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to save wishlist.' });
+  }
+});
+
+app.get('/api/user/orders', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const orders = await FirebaseRtdb.getUserOrders(req.userId!);
+    res.json({ success: true, orders });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to fetch orders.' });
+  }
+});
+
+app.get('/api/orders/:orderId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const order = await FirebaseRtdb.getUserOrderById(req.userId!, req.params.orderId);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+    res.json({ success: true, order });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to fetch order.' });
+  }
+});
+
+// Secure Order Creation with strict validation
+const handleOrderCreation = async (req: AuthenticatedRequest, res: Response) => {
+  const requestId = generateRequestId();
+  try {
+    const userId = req.userId!;
+    const { items, customer, discountCode, paymentMethod } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Cart items are required.', requestId });
+    }
+
+    let calculatedSubtotal = 0;
+    const validatedItems: any[] = [];
+    let primaryProductId = '';
+    let primaryProductName = '';
+
+    const dbProducts = await FirebaseRtdb.getAllProducts();
+    const productList = dbProducts && dbProducts.length > 0 ? dbProducts : PRODUCTS;
+
+    for (const ci of items) {
+      const rawId = ci.productId || ci.product?.id || ci.id;
+      const matchedProduct = productList.find((p: any) => p.id === rawId || p.slug === rawId);
+      if (!matchedProduct) {
+        return res.status(400).json({ success: false, message: `Unknown product ID: ${rawId}`, requestId });
+      }
+
+      const quantity = parseInt(ci.quantity || 1, 10);
+      if (isNaN(quantity) || quantity < 1 || quantity > 10) {
+        return res.status(400).json({ success: false, message: 'Invalid quantity (must be between 1 and 10).', requestId });
+      }
+
+      if (!primaryProductId) {
+        primaryProductId = matchedProduct.id;
+        primaryProductName = matchedProduct.title;
+      }
+
+      const serverPrice = matchedProduct.price;
+      calculatedSubtotal += serverPrice * quantity;
+
+      const keyHex1 = Math.random().toString(16).substring(2, 6).toUpperCase();
+      const keyHex2 = Math.random().toString(16).substring(2, 6).toUpperCase();
+
+      validatedItems.push({
+        productId: matchedProduct.id,
+        productTitle: matchedProduct.title,
+        productSlug: matchedProduct.slug,
+        productImage: matchedProduct.image,
+        category: matchedProduct.categoryLabel || matchedProduct.category,
+        productType: matchedProduct.productType || 'DOWNLOAD',
+        licenseType: ci.licenseType || 'Standard',
+        price: serverPrice,
+        quantity,
+        licenseKey: `KEY-${matchedProduct.slug.substring(0, 3).toUpperCase()}-${keyHex1}-${keyHex2}`,
+        downloadUrl: `/api/downloads/${matchedProduct.id}`,
+        fileSize: matchedProduct.fileSize || '12.4 MB',
+        version: matchedProduct.version || 'v1.2.0',
+        fileFormat: matchedProduct.fileFormat || 'ZIP',
+        downloadStatus: 'UNAVAILABLE',
+        downloadLimit: 10,
+        downloadCount: 0,
+        product: matchedProduct,
+      });
+    }
+
+    let calculatedDiscount = 0;
+    if (discountCode) {
+      const coupon = COUPONS.find((c) => c.code.toUpperCase() === String(discountCode).toUpperCase());
+      if (coupon) {
+        const nowMs = Date.now();
+        const isActive = coupon.active !== false;
+        const isNotExpired = !coupon.expiresAt || new Date(coupon.expiresAt).getTime() > nowMs;
+        const meetsMinSpend = !coupon.minSpend || calculatedSubtotal >= coupon.minSpend;
+
+        if (isActive && isNotExpired && meetsMinSpend) {
+          calculatedDiscount = Math.round((calculatedSubtotal * coupon.discountPercent) / 100);
+        }
+      }
+    }
+
+    const calculatedTotal = Math.max(0, calculatedSubtotal - calculatedDiscount);
+    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const orderId = `LN-${todayStr}-${randomHex}`;
+    const now = new Date().toISOString();
+
+    const newOrder = {
+      id: orderId,
+      orderId,
+      orderNumber: orderId,
+      userId,
+      date: now.split('T')[0],
+      createdAt: now,
+      updatedAt: now,
+      customerEmail: customer?.email || req.userEmail,
+      customerName: customer?.fullName || 'Customer',
+      productId: primaryProductId,
+      productNameSnapshot: primaryProductName,
+      status: 'PENDING',
+      paymentStatus: 'pending',
+      orderStatus: 'pending',
+      deliveryStatus: 'PENDING',
+      downloadStatus: 'UNAVAILABLE',
+      amount: calculatedTotal,
+      currency: 'INR',
+      customer: {
+        fullName: customer?.fullName || 'Customer',
+        email: customer?.email || req.userEmail,
+        phone: customer?.phone || '',
+        company: customer?.company || '',
+        country: customer?.country || 'India',
+      },
+      items: validatedItems,
+      subtotal: calculatedSubtotal,
+      discount: calculatedDiscount,
+      discountCode: discountCode || '',
+      tax: 0,
+      total: calculatedTotal,
+      paymentMethod: paymentMethod || 'Card / UPI Gateway',
+      checkoutStartedAt: now,
+      requestId,
+    };
+
+    await FirebaseRtdb.saveGlobalOrder(newOrder);
+
+    await AuditLogger.log({
+      requestId,
+      userId,
+      orderId,
+      productId: primaryProductId,
+      eventType: 'ORDER_CREATED',
+      eventStatus: 'SUCCESS',
+      source: 'API',
+      metadata: { amount: calculatedTotal, currency: 'INR', itemsCount: validatedItems.length },
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    res.status(201).json({ success: true, order: newOrder, requestId });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Failed to create order.', requestId });
+  }
+};
+
+app.post('/api/orders/create', requireAuth, handleOrderCreation);
+app.post('/api/user/orders', requireAuth, handleOrderCreation);
+
+// ============================================
+// EASEBUZZ PAYMENT GATEWAY (REAL)
+// ============================================
+app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { orderId } = req.body;
+    const userId = req.userId!;
+
+    if (!orderId) {
+      return res.status(400).json({ success: false, message: 'Order ID is required.' });
+    }
+
+    const order = await FirebaseRtdb.getUserOrderById(userId, orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    if (order.paymentStatus === 'paid' || order.paymentStatus === 'PAID') {
+      return res.status(400).json({ success: false, message: 'Order is already paid.' });
+    }
+
+    const phone = order.customer?.phone || '';
+    const phoneRegex = /^[6-9][0-9]{9}$/;
+    if (!phone || !phoneRegex.test(phone)) {
+      return res.status(400).json({ success: false, message: 'Valid 10-digit phone number is required at checkout for Easebuzz.' });
+    }
+
+    const amount = Number(order.total || order.amount).toFixed(2);
+    const txnid = order.orderNumber;
+    const firstname = order.customer?.fullName || 'Customer';
+    const email = order.customer?.email || req.userEmail || '';
+    const productinfo = (order.items || []).map((i: any) => i.productTitle).join(', ').substring(0, 100);
+
+    const surl = `${APP_URL}/api/payments/easebuzz/callback`;
+    const furl = `${APP_URL}/api/payments/easebuzz/callback`;
+
+    const hashString = `${EASEBUZZ_KEY}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|||||||||||${EASEBUZZ_SALT}`;
+    const hash = easebuzzHash(hashString);
+
+    const formData = new URLSearchParams();
+    formData.append('key', EASEBUZZ_KEY);
+    formData.append('txnid', txnid);
+    formData.append('amount', amount);
+    formData.append('productinfo', productinfo);
+    formData.append('firstname', firstname);
+    formData.append('email', email);
+    formData.append('phone', phone);
+    formData.append('surl', surl);
+    formData.append('furl', furl);
+    formData.append('hash', hash);
+
+    const ebzResponse = await fetch(`${EASEBUZZ_BASE_URL}/payment/initiateLink`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: formData.toString()
+    });
+
+    const ebzData = await ebzResponse.json();
+    if (ebzData.status === 1) {
+      order.easebuzzAccessKey = ebzData.data;
+      order.status = 'PENDING_PAYMENT';
+      order.paymentStatus = 'pending';
+      await FirebaseRtdb.saveGlobalOrder(order);
+      res.json({ success: true, accessKey: ebzData.data });
+    } else {
+      res.status(400).json({ success: false, message: ebzData.data || 'Failed to initiate Easebuzz payment.' });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Easebuzz payment initiation failed.' });
+  }
+});
+
+// Shared server-side verification and synchronization helper
+async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ success: boolean; status?: string; message?: string; orderId?: string }> {
+  const globalOrder = await FirebaseRtdb.getGlobalOrder(orderIdOrTxnId);
+  if (!globalOrder) {
+    return { success: false, message: 'Order not found' };
+  }
+
+  if (globalOrder.paymentStatus === 'paid' || globalOrder.paymentStatus === 'PAID') {
+    return { success: true, status: 'PAID', orderId: globalOrder.id, message: 'Already paid' };
+  }
+
+  const txnid = globalOrder.orderNumber || globalOrder.id;
+  const amount = Number(globalOrder.total || globalOrder.amount).toFixed(2);
+  const email = globalOrder.customer?.email || globalOrder.customerEmail || '';
+  const phone = globalOrder.customer?.phone || '';
+
+  const transHashStr = `${EASEBUZZ_KEY}|${txnid}|${amount}|${email}|${phone}|${EASEBUZZ_SALT}`;
+  const transHash = easebuzzHash(transHashStr);
+
+  const transFormData = new URLSearchParams();
+  transFormData.append('key', EASEBUZZ_KEY);
+  transFormData.append('txnid', txnid);
+  transFormData.append('amount', amount);
+  transFormData.append('email', email);
+  transFormData.append('phone', phone);
+  transFormData.append('hash', transHash);
+
+  const verifyRes = await fetch(`${EASEBUZZ_BASE_URL}/transaction/v2.1/retrieve`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json'
+    },
+    body: transFormData.toString()
+  });
+
+  const verifyData = await verifyRes.json();
+  if (!verifyData.status || !verifyData.data || verifyData.data.status !== 'success') {
+    const errorReason = verifyData.data?.error_Message || verifyData.data?.status || 'Verification failed';
+    globalOrder.status = 'FAILED';
+    globalOrder.paymentStatus = 'failed';
+    globalOrder.orderStatus = 'failed';
+    globalOrder.failureReason = errorReason;
+    globalOrder.updatedAt = new Date().toISOString();
+    await FirebaseRtdb.saveGlobalOrder(globalOrder);
+    return { success: false, status: 'FAILED', orderId: globalOrder.id, message: errorReason };
+  }
+
+  const verifiedAmount = Number(verifyData.data.amount).toFixed(2);
+  const expectedAmount = Number(globalOrder.total || globalOrder.amount).toFixed(2);
+  if (verifiedAmount !== expectedAmount) {
+    return { success: false, orderId: globalOrder.id, message: 'Amount mismatch during retrieval' };
+  }
+
+  const easebuzzId = verifyData.data.easepayid || verifyData.data.transaction_id || `EBZ-${Date.now()}`;
+  const now = new Date().toISOString();
+  const userId = globalOrder.userId;
+
+  globalOrder.status = 'PAID';
+  globalOrder.paymentStatus = 'paid';
+  globalOrder.orderStatus = 'paid';
+  globalOrder.deliveryStatus = 'DELIVERED';
+  globalOrder.downloadStatus = 'AVAILABLE';
+  globalOrder.transactionId = easebuzzId;
+  globalOrder.paymentId = easebuzzId;
+  globalOrder.paymentProvider = 'Easebuzz';
+  globalOrder.updatedAt = now;
+
+  globalOrder.items = (globalOrder.items || []).map((item: any) => ({
+    ...item,
+    downloadStatus: 'AVAILABLE',
+  }));
+
+  // Save to BOTH global and user orders via saveGlobalOrder
+  await FirebaseRtdb.saveGlobalOrder(globalOrder);
+
+  for (const item of globalOrder.items || []) {
+    const purchaseId = `pur_${globalOrder.id}_${item.productId}`;
+    const downloadId = `dl_${globalOrder.id}_${item.productId}`;
+
+    await FirebaseRtdb.savePurchase(userId, purchaseId, {
+      purchaseId, userId, orderId: globalOrder.id,
+      productId: item.productId, productTitle: item.productTitle,
+      purchasedAt: now, accessStatus: 'active',
+      downloadLimit: 10, downloadCount: 0
+    });
+
+    await FirebaseRtdb.saveUserDownload(userId, downloadId, {
+      id: downloadId, downloadId, orderId: globalOrder.id,
+      productId: item.productId, productTitle: item.productTitle,
+      status: 'AVAILABLE', createdAt: now,
+      downloadUrl: item.downloadUrl, fileSize: item.fileSize,
+      fileFormat: item.fileFormat, licenseKey: item.licenseKey
+    });
+  }
+
+  await FirebaseRtdb.setUserCart(userId, []);
+
+  await AuditLogger.log({
+    requestId: generateRequestId(),
+    userId,
+    orderId: globalOrder.id,
+    eventType: 'PAYMENT_VERIFICATION_SUCCESS',
+    eventStatus: 'SUCCESS',
+    source: 'EASEBUZZ_CALLBACK',
+    metadata: { easebuzzId, amount: expectedAmount },
+  });
+
+  return { success: true, status: 'PAID', orderId: globalOrder.id };
+}
+
+app.post('/api/payments/easebuzz/callback', async (req: Request, res: Response) => {
+  try {
+    const params = req.body;
+    if (!verifyEasebuzzHash(params, EASEBUZZ_SALT)) {
+      return res.status(400).send('Invalid signature');
+    }
+
+    const txnid = params.txnid;
+    const status = params.status;
+
+    const globalOrder = await FirebaseRtdb.getGlobalOrder(txnid);
+    if (!globalOrder) {
+      return res.status(404).send('Order not found');
+    }
+
+    if (status !== 'success') {
+      globalOrder.status = 'FAILED';
+      globalOrder.paymentStatus = 'failed';
+      globalOrder.orderStatus = 'failed';
+      globalOrder.failureReason = params.error_Message || 'Payment failed on gateway';
+      globalOrder.updatedAt = new Date().toISOString();
+      await FirebaseRtdb.saveGlobalOrder(globalOrder);
+      return res.redirect(`${APP_URL}/checkout?status=failed&orderId=${globalOrder.id}`);
+    }
+
+    const syncResult = await verifyAndSyncEasebuzzOrder(txnid);
+    if (syncResult.success) {
+      return res.redirect(`${APP_URL}/checkout?status=success&orderId=${globalOrder.id}`);
+    } else {
+      return res.redirect(`${APP_URL}/checkout?status=failed&orderId=${globalOrder.id}`);
+    }
+  } catch (err: any) {
+    res.status(500).send('Internal server error');
+  }
+});
+
+// Reconcile Safety Net endpoint (Admin, owning user, or CRON_SECRET header)
+app.post('/api/payments/easebuzz/reconcile/:orderId', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const orderId = req.params.orderId;
+    const cronHeader = req.headers['x-cron-secret'] || req.headers['authorization']?.replace('Bearer ', '');
+    const isCron = cronHeader && CRON_SECRET && cronHeader === CRON_SECRET;
+
+    if (!isCron) {
+      const sid = req.cookies?.sid;
+      if (!sid) {
+        return res.status(401).json({ success: false, message: 'Authentication required.' });
+      }
+      const payload = await AuthServiceServer.verifyOpaqueSession(sid);
+      if (!payload || !payload.userId) {
+        return res.status(401).json({ success: false, message: 'Invalid session.' });
+      }
+      const order = await FirebaseRtdb.getGlobalOrder(orderId);
+      if (!order) {
+        return res.status(404).json({ success: false, message: 'Order not found.' });
+      }
+      const profile = await FirebaseRtdb.getUserProfile(payload.userId);
+      const isAdmin = profile && profile.role === 'admin';
+      if (!isAdmin && order.userId !== payload.userId) {
+        return res.status(403).json({ success: false, message: 'Access denied.' });
+      }
+    }
+
+    const result = await verifyAndSyncEasebuzzOrder(orderId);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || 'Reconciliation failed.' });
+  }
+});
+
+// Cron Batch Reconciliation for stuck PENDING_PAYMENT orders older than 10 mins
+app.post('/api/payments/easebuzz/reconcile-cron', async (req: Request, res: Response) => {
+  try {
+    const cronHeader = req.headers['x-cron-secret'] || req.headers['authorization']?.replace('Bearer ', '');
+    if (!CRON_SECRET || cronHeader !== CRON_SECRET) {
+      return res.status(403).json({ success: false, message: 'Unauthorized cron request.' });
+    }
+
+    const allOrders = await FirebaseRtdb.getAllGlobalOrders();
+    const tenMinsAgo = Date.now() - 10 * 60 * 1000;
+    const pendingOrders = allOrders.filter(o => 
+      (o.status === 'PENDING_PAYMENT' || o.paymentStatus === 'pending') &&
+      new Date(o.createdAt || o.date || 0).getTime() < tenMinsAgo
+    );
+
+    const results = [];
+    for (const ord of pendingOrders) {
+      const resSync = await verifyAndSyncEasebuzzOrder(ord.id);
+      results.push({ orderId: ord.id, ...resSync });
+    }
+
+    res.json({ success: true, reconciledCount: results.length, results });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || 'Cron reconciliation failed.' });
+  }
+});
+
+// ============================================
+// SECURE DOWNLOAD TOKENS & STREAMING (RTDB ONLY)
+// ============================================
+app.post('/api/downloads/:productId/token', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const productId = req.params.productId;
+    const purchases = await FirebaseRtdb.getUserPurchases(userId);
+    const purchase = purchases.find((p: any) => p.productId === productId && p.accessStatus === 'active');
+
+    if (!purchase) {
+      return res.status(403).json({ success: false, message: 'Active purchase license not found for this product.' });
+    }
+
+    if (purchase.downloadCount >= (purchase.downloadLimit || 10)) {
+      return res.status(403).json({ success: false, message: 'Download limit has been reached for this product license.' });
+    }
+
+    const tokenId = `DL-TOK-${Date.now()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 mins
+
+    const tokenData = {
+      tokenId,
+      userId,
+      productId,
+      productTitle: purchase.productName || 'Digital Product',
+      orderId: purchase.orderId,
+      purchaseId: purchase.purchaseId,
+      expiresAt,
+      used: false,
+    };
+
+    await FirebaseRtdb.set(`downloadTokens/${tokenId}`, tokenData);
+
+    res.json({
+      success: true,
+      token: tokenId,
+      expiresAt,
+      downloadUrl: `/api/downloads/stream?token=${tokenId}`,
+    });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to generate download token.' });
+  }
+});
+
+app.get('/api/downloads/stream', async (req: Request, res: Response) => {
+  try {
+    const token = req.query.token as string;
+    if (!token) {
+      return res.status(400).send('Download token is required.');
+    }
+
+    const tokenData = await FirebaseRtdb.get<any>(`downloadTokens/${token}`);
+    if (!tokenData) {
+      return res.status(403).send('Invalid download token.');
+    }
+
+    if (Date.now() > tokenData.expiresAt) {
+      await FirebaseRtdb.delete(`downloadTokens/${token}`);
+      return res.status(403).send('Download link has expired.');
+    }
+
+    if (tokenData.used) {
+      return res.status(403).send('Download link has already been used.');
+    }
+
+    // Mark token as used
+    tokenData.used = true;
+    await FirebaseRtdb.set(`downloadTokens/${token}`, tokenData);
+
+    // Enforce download limit & increment count
+    const purchases = await FirebaseRtdb.getUserPurchases(tokenData.userId);
+    const purchase = purchases.find((p: any) => p.purchaseId === tokenData.purchaseId || p.productId === tokenData.productId);
+
+    if (purchase) {
+      const currentCount = purchase.downloadCount || 0;
+      const limit = purchase.downloadLimit || 10;
+      if (currentCount >= limit) {
+        return res.status(403).send('Download limit has been reached for this license.');
+      }
+      purchase.downloadCount = currentCount + 1;
+      await FirebaseRtdb.savePurchase(tokenData.userId, purchase.purchaseId, purchase);
+    }
+
+    const filePath = SecureFileManager.ensureProductFileExists(tokenData.productId);
+    const filename = `${tokenData.productId}-package.zip`;
+    SecureFileManager.streamFileToResponse(filePath, filename, res);
+  } catch (err: any) {
+    res.status(500).send('Internal server error during download.');
+  }
+});
+
+// Admin Audit Logs & Analytics
+app.get('/api/admin/audit-logs', requireAdmin, async (req: AuthenticatedRequest, res) => {
+  try {
+    const logs = await AuditLogger.getAllLogs(100);
+    res.json({ success: true, logs });
+  } catch {
+    res.status(500).json({ success: false, message: 'Failed to fetch audit logs.' });
+  }
+});
+
+export default app;

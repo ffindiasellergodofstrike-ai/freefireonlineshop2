@@ -1,0 +1,455 @@
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  ShieldCheck,
+  Zap,
+  FileCode,
+  Download,
+  Layers,
+  Check,
+  ShoppingCart,
+  CheckCircle2,
+  FileText,
+  HelpCircle,
+  History,
+  Sparkles,
+  ArrowRight,
+  Terminal,
+  MonitorPlay,
+  Share2,
+  Wrench,
+  Video,
+  FolderArchive,
+  BookOpen,
+  Lock,
+  ChevronDown,
+} from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { useToast } from '../context/ToastContext';
+import { ProductService } from '../services/ProductService';
+import { ProductImage } from '../components/ProductImage';
+import { Price } from '../components/Price';
+import { WishlistButton } from '../components/WishlistButton';
+import { FAQAccordion, FAQItem } from '../components/FAQAccordion';
+import { Modal } from '../components/Modal';
+import { ProductCard } from '../components/ProductCard';
+import { LicenseType, ProductType } from '../types';
+
+const getTypeIcon = (type: ProductType) => {
+  switch (type) {
+    case 'SCRIPT':
+      return <FileCode className="w-3.5 h-3.5 text-blue-600" />;
+    case 'TOOL':
+      return <Wrench className="w-3.5 h-3.5 text-emerald-600" />;
+    case 'DOWNLOAD':
+      return <Download className="w-3.5 h-3.5 text-indigo-600" />;
+    case 'VIDEO':
+      return <Video className="w-3.5 h-3.5 text-amber-600" />;
+    case 'RESOURCE':
+      return <FolderArchive className="w-3.5 h-3.5 text-sky-600" />;
+    default:
+      return <Layers className="w-3.5 h-3.5 text-slate-600" />;
+  }
+};
+
+interface DetailSectionProps {
+  id: string;
+  title: string;
+  icon: any;
+  color: string;
+  content: React.ReactNode;
+  defaultOpen?: boolean;
+}
+
+const ProductDetailSection: React.FC<DetailSectionProps> = ({
+  title,
+  icon: Icon,
+  color,
+  content,
+  defaultOpen = false
+}) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <div 
+      className={`border rounded-xl transition-all overflow-hidden ${
+        isOpen ? 'border-blue-200 bg-white shadow-sm' : 'border-slate-200 bg-slate-50/30 hover:border-slate-300'
+      }`}
+    >
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-3 sm:p-3.5 text-left focus:outline-none"
+      >
+        <div className="flex items-center gap-3">
+          <div className={`w-8 h-8 rounded-lg ${color} flex items-center justify-center shrink-0`}>
+            <Icon className="w-4 h-4" />
+          </div>
+          <h3 className="text-sm font-bold text-slate-900 leading-tight">{title}</h3>
+        </div>
+        <div className={`p-1 rounded-full transition-transform duration-200 ${isOpen ? 'rotate-180 bg-blue-50 text-blue-600' : 'text-slate-400'}`}>
+          <ChevronDown className="w-4 h-4" />
+        </div>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
+          >
+            <div className="px-4 pb-5 pt-1 sm:px-5 sm:pb-6 border-t border-slate-100">
+              {content}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export const ProductDetailsPage: React.FC = () => {
+  const { pathParams, navigate, addToCart } = useApp();
+  const { showToast } = useToast();
+
+  const rawSlug = pathParams.slug || (window.location.pathname.startsWith('/product/') ? window.location.pathname.replace('/product/', '').split('?')[0] : '');
+  const slug = decodeURIComponent(rawSlug);
+  const product = ProductService.getProductBySlug(slug) || ProductService.getProductBySlug(rawSlug);
+
+  const quantity = 1;
+  const isDemoModalOpen = false;
+  const setIsDemoModalOpen = (val: boolean) => {};
+
+  if (!product) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-16 text-center">
+        <h2 className="text-2xl font-bold text-slate-900">Product Not Found</h2>
+        <p className="text-slate-600 mt-2">The requested digital item does not exist or has been retired.</p>
+        <button
+          onClick={() => navigate('/products')}
+          className="mt-6 px-6 py-2.5 bg-blue-600 text-white rounded-xl font-semibold"
+        >
+          Return to Catalog
+        </button>
+      </div>
+    );
+  }
+
+  const currentPrice = product.price;
+  const relatedProducts = ProductService.getRelatedProducts(product.id, 4);
+
+  const handleAddToCart = () => {
+    addToCart(product, 'Standard', quantity);
+  };
+
+  const handleBuyNow = () => {
+    addToCart(product, 'Standard', quantity);
+    navigate('/checkout');
+  };
+
+  const handleShare = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(window.location.href);
+      showToast('success', 'Link Copied', 'Product URL copied to clipboard.');
+    }
+  };
+
+  const faqsList: FAQItem[] = product.faqs || [
+    {
+      question: 'How is this digital product delivered after payment?',
+      answer: 'Delivery is immediate. As soon as your payment is verified, the order is updated to Paid and access is unlocked in your My Downloads vault with secure download tokens.',
+    },
+    {
+      question: 'Are future version updates and security fixes included?',
+      answer: 'Yes! Every purchase comes with access to future updates, patches, and maintenance releases for this product.',
+    },
+    {
+      question: 'Can I use this for client projects or commercial software?',
+      answer: 'Yes. The Standard License allows deployment for personal or single commercial client projects. An Extended License is available for unlimited client deployments or SaaS software platforms.',
+    },
+    {
+      question: 'What if I encounter technical issues with my files?',
+      answer: 'Our technical team is available to assist you. If a technical non-delivery issue occurs that cannot be resolved, you are covered by our Digital Product Refund Policy.',
+    },
+  ];
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
+      {/* Main 2-Column Product Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
+        {/* Left Column: Visual Gallery & Key Specs (7 cols) */}
+        <div className="lg:col-span-7 space-y-6">
+          {/* Main Visual Frame */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
+            <div className="aspect-16/10 rounded-2xl overflow-hidden bg-slate-900 relative shadow-inner">
+              <ProductImage
+                product={product}
+                className="w-full h-full object-cover"
+              />
+            </div>
+
+            {/* Action Bar Below Image */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <button
+                id="launch-interactive-demo-btn"
+                onClick={() => setIsDemoModalOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold transition-all shadow-xs"
+              >
+                <MonitorPlay className="w-4 h-4" />
+                <span>Product Overview & Specs</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  id="share-product-btn"
+                  onClick={handleShare}
+                  className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+                  aria-label="Share product"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+                <WishlistButton product={product} size="md" showLabel />
+              </div>
+            </div>
+          </div>
+
+          {/* Technical Specifications Vertical List */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">File Type</span>
+              <p className="text-sm font-extrabold text-slate-900">Zip</p>
+            </div>
+            <div className="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">File Size</span>
+              <p className="text-sm font-extrabold text-slate-900">{product.fileSize || 'Direct Access'}</p>
+            </div>
+            <div className="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Delivery</span>
+              <p className="text-sm font-extrabold text-emerald-600">Instant Digital</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column (Purchase Box) - 5 cols */}
+        <div className="lg:col-span-5 space-y-6">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-md p-6 sm:p-8 space-y-6 sticky top-24">
+            {/* Header / Titles */}
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+                  <Lock className="w-3 h-3 text-emerald-600" />
+                  Verified Digital Item
+                </span>
+              </div>
+
+              <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                {product.title}
+              </h1>
+
+              <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                {product.shortDescription}
+              </p>
+            </div>
+
+            {/* Price Display */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+              <div>
+                <span className="text-xs text-slate-600 block">Total Due:</span>
+                <Price
+                  price={currentPrice}
+                  originalPrice={product.originalPrice}
+                  size="xl"
+                />
+              </div>
+            </div>
+
+            {/* Purchase CTA Buttons */}
+            <div className="space-y-2.5">
+              <button
+                id="buy-now-btn"
+                onClick={handleBuyNow}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition-all shadow-md hover:shadow-emerald-500/20 flex items-center justify-center gap-2 active:scale-98"
+              >
+                <Zap className="w-4 h-4 fill-white" />
+                <span>Buy Now (Instant Access)</span>
+              </button>
+
+              <button
+                id="add-to-cart-detail-btn"
+                onClick={handleAddToCart}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-sm flex items-center justify-center gap-2 active:scale-98"
+              >
+                <ShoppingCart className="w-3.5 h-3.5" />
+                <span>Add to Shopping Cart</span>
+              </button>
+            </div>
+
+            {/* Value Guarantees list */}
+            <div className="pt-2 border-t border-slate-100 space-y-2 text-xs text-slate-600">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Instant electronic delivery upon payment confirmation</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Direct secure access token & lifetime updates included</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Clear product-specific license & technical documentation</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Product Details - Collapsible Dropdown Sections */}
+      <div className="space-y-4 py-8">
+        {[
+          {
+            id: 'overview',
+            title: 'Product Overview',
+            icon: FileText,
+            color: 'bg-blue-50 text-blue-600',
+            defaultOpen: true,
+            content: (
+              <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed">
+                <p className="text-base text-slate-600 whitespace-pre-line">{product.description}</p>
+              </div>
+            )
+          },
+          {
+            id: 'requirements',
+            title: 'System Requirements',
+            icon: Terminal,
+            color: 'bg-slate-50 text-slate-600',
+            content: (
+              <ul className="space-y-2.5 text-sm">
+                {(product.requirements || ['Standard web browser']).map((req, idx) => (
+                  <li key={idx} className="flex items-center gap-2 text-slate-700">
+                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>{req}</span>
+                  </li>
+                ))}
+              </ul>
+            )
+          },
+          {
+            id: 'assets',
+            title: 'Assets Included',
+            icon: FileCode,
+            color: 'bg-purple-50 text-purple-600',
+            content: (
+              <div className="flex flex-wrap gap-2">
+                {product.whatsIncluded.map((file, idx) => (
+                  <span key={idx} className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-medium text-slate-700">
+                    {file}
+                  </span>
+                ))}
+              </div>
+            )
+          },
+          {
+            id: 'features',
+            title: 'Core Features',
+            icon: Sparkles,
+            color: 'bg-emerald-50 text-emerald-600',
+            content: (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {product.features.map((feat, idx) => (
+                  <div key={idx} className="flex items-start gap-3 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
+                    <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+                      <Check className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-sm font-semibold text-slate-800">{feat}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          },
+          {
+            id: 'faqs',
+            title: 'Frequently Asked Questions (FAQs)',
+            icon: HelpCircle,
+            color: 'bg-amber-50 text-amber-600',
+            content: <FAQAccordion items={faqsList} allowMultiple />
+          }
+        ].map((section) => (
+          <ProductDetailSection
+            key={section.id}
+            id={section.id}
+            title={section.title}
+            icon={section.icon}
+            color={section.color}
+            content={section.content}
+            defaultOpen={section.defaultOpen}
+          />
+        ))}
+      </div>
+
+      {/* Related Products Carousel */}
+      {relatedProducts.length > 0 && (
+        <div className="space-y-6 pt-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-extrabold text-slate-900">Related Digital Products</h2>
+            <button
+              onClick={() => navigate('/category/:slug', { slug: product.category })}
+              className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+            >
+              <span>View All {product.categoryLabel}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {relatedProducts.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Product Overview Modal */}
+      {isDemoModalOpen && (
+        <Modal
+          isOpen={isDemoModalOpen}
+          onClose={() => setIsDemoModalOpen(false)}
+          title={`Overview: ${product.title}`}
+          maxWidth="lg"
+        >
+          <div className="space-y-6 py-2">
+            <div className="aspect-16/10 rounded-2xl overflow-hidden bg-slate-900">
+              <ProductImage product={product} className="w-full h-full object-cover" />
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="font-bold text-slate-900 text-base">Digital Delivery & Verification</h4>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                This digital product is delivered electronically upon verified payment. Access includes complete files, technical documentation, and lifetime version updates.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+              <button
+                onClick={() => setIsDemoModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-semibold"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setIsDemoModalOpen(false);
+                  handleAddToCart();
+                }}
+                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+              >
+                Add to Cart (${product.price.toFixed(2)})
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
