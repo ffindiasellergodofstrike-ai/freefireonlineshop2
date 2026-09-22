@@ -1,3 +1,5 @@
+import { normalizeProductPreviewUrl } from './productPreview';
+
 const HIDDEN_PRODUCT_STATUSES = new Set(['archived', 'draft', 'inactive']);
 
 export function isBrowserSafeAssetUrl(value: unknown): value is string {
@@ -51,6 +53,8 @@ export function normalizeProductAssets(product: any, fallback?: any): any {
     requirements: normalizeStringArray(product?.requirements),
     whatsIncluded: normalizeStringArray(product?.whatsIncluded),
     faqs: Array.isArray(product?.faqs) ? product.faqs : [],
+    previewUrl: normalizeProductPreviewUrl(product?.previewUrl, product?.id)
+      || normalizeProductPreviewUrl(fallback?.previewUrl, fallback?.id),
   };
 
   delete normalized.licenseTypes;

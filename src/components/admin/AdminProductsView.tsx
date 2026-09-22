@@ -43,6 +43,7 @@ export const AdminProductsView: React.FC<AdminProductsViewProps> = ({
       image: linknestCover,
       status: 'published',
       stock: 999,
+      previewUrl: '',
     });
     setIsModalOpen(true);
   };
@@ -54,6 +55,28 @@ export const AdminProductsView: React.FC<AdminProductsViewProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    const previewUrl = String(editingProduct.previewUrl || '').trim();
+    if (previewUrl) {
+      if (previewUrl.startsWith('/')) {
+        const expectedPreviewPath = `/demos/${editingProduct.id}/`;
+        if (previewUrl !== expectedPreviewPath) {
+          alert(`Built-in preview path must match this product ID: ${expectedPreviewPath}`);
+          return;
+        }
+      } else {
+        try {
+          const parsed = new URL(previewUrl);
+          const hostname = parsed.hostname.toLowerCase();
+          if (parsed.protocol !== 'https:' || hostname === 'vercel.app' || hostname.endsWith('.vercel.app')) {
+            alert('Use an HTTPS custom demo domain. Direct *.vercel.app URLs are blocked.');
+            return;
+          }
+        } catch {
+          alert('Enter a built-in /demos/product-id/ path or a valid HTTPS custom demo URL.');
+          return;
+        }
+      }
+    }
     setSaving(true);
     setSuccessMsg('');
     try {
@@ -295,6 +318,20 @@ export const AdminProductsView: React.FC<AdminProductsViewProps> = ({
                   onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Live Demo URL or Built-in Path</label>
+                <input
+                  inputMode="url"
+                  placeholder="/demos/product-id/ or https://demo.yourdomain.com"
+                  value={editingProduct.previewUrl || ''}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, previewUrl: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm"
+                />
+                <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  Use <code>/demos/{editingProduct.id}/</code> for this product's bundled preview, or add a custom HTTPS demo domain. Direct <code>*.vercel.app</code> URLs are blocked.
+                </p>
               </div>
 
               <div>

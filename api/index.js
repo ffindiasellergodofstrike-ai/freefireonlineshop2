@@ -1077,6 +1077,7 @@ var PRODUCTS = [
     fileFormat: "HTML, CSS, JS (ZIP Archive)",
     fileSize: "6.7 KB",
     downloadUrl: "/downloads/linknest-pro-template.zip",
+    previewUrl: "/demos/linknest-pro/",
     version: "",
     features: [
       "Responsive Mobile & Desktop Layout",
@@ -1167,6 +1168,7 @@ var PRODUCTS = [
     fileFormat: "React/Vite-ready (ZIP Archive)",
     fileSize: "1.2 MB",
     downloadUrl: "/downloads/neura-ai-template.zip",
+    previewUrl: "/demos/neura-ai/",
     version: "1.0.0",
     features: [
       "\u{1F916} AI SaaS Design: Modern interface specifically designed for AI and SaaS products.",
@@ -1280,6 +1282,7 @@ var PRODUCTS = [
     fileFormat: "React/Vite-ready (ZIP Archive)",
     fileSize: "1.4 MB",
     downloadUrl: "/downloads/finora-template.zip",
+    previewUrl: "/demos/finora/",
     version: "1.0.0",
     features: [
       "\u{1F4B3} Fintech-Focused Design: Designed specifically around modern financial technology products and services.",
@@ -1384,6 +1387,7 @@ var PRODUCTS = [
     fileFormat: "React/Vite-ready (ZIP Archive)",
     fileSize: "1.6 MB",
     downloadUrl: "/downloads/learnify-template.zip",
+    previewUrl: "/demos/learnify/",
     version: "1.0.0",
     features: [
       "\u{1F393} Complete E-Learning Design: A professional education-focused interface designed around online courses.",
@@ -1496,6 +1500,7 @@ var PRODUCTS = [
     fileFormat: "React/Vite-ready (ZIP Archive)",
     fileSize: "2.1 MB",
     downloadUrl: "/downloads/velora-template.zip",
+    previewUrl: "/demos/velora/",
     version: "1.0.0",
     features: [
       "\u{1F6CD}\uFE0F Complete Shopping Experience: A complete frontend shopping flow from product discovery to checkout and order confirmation.",
@@ -1616,6 +1621,7 @@ var PRODUCTS = [
     fileFormat: "React/Vite-ready (ZIP Archive)",
     fileSize: "3.4 MB",
     downloadUrl: "/downloads/workhub-template.zip",
+    previewUrl: "/demos/workhub/",
     version: "1.0.0",
     features: [
       "\u{1F464} Dual Buyer & Seller accounts: Smooth seller onboarding with profile bio, custom skills, languages, education and certs.",
@@ -1732,6 +1738,35 @@ var COUPONS = [
 import { Router } from "express";
 import { z } from "zod";
 import multer from "multer";
+
+// server/productPreview.ts
+var BLOCKED_PREVIEW_HOSTS = /* @__PURE__ */ new Set(["vercel.app"]);
+var LOCAL_PREVIEW_PATH = /^\/demos\/[a-z0-9]+(?:-[a-z0-9]+)*\/$/;
+function normalizeProductPreviewUrl(value, productId) {
+  if (typeof value !== "string" || value.trim() === "") return void 0;
+  const previewUrl = value.trim();
+  if (LOCAL_PREVIEW_PATH.test(previewUrl)) {
+    if (typeof productId === "string" && previewUrl !== `/demos/${productId}/`) return void 0;
+    return previewUrl;
+  }
+  if (previewUrl.startsWith("/")) return void 0;
+  try {
+    const url = new URL(previewUrl);
+    const hostname = url.hostname.toLowerCase();
+    if (url.protocol !== "https:") return void 0;
+    if (hostname === "localhost" || hostname.endsWith(".localhost")) return void 0;
+    if (BLOCKED_PREVIEW_HOSTS.has(hostname) || hostname.endsWith(".vercel.app")) return void 0;
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return void 0;
+  }
+}
+function isAllowedProductPreviewUrl(value) {
+  return normalizeProductPreviewUrl(value) !== void 0;
+}
+
+// server/adminRoutes.ts
 var adminRouter = Router();
 var upload = multer({
   storage: multer.memoryStorage(),
@@ -1740,6 +1775,10 @@ var upload = multer({
     // 5MB limit
   }
 });
+var previewUrlSchema = z.union([z.literal(""), z.string().trim().max(2048)]).optional().refine(
+  (value) => !value || isAllowedProductPreviewUrl(value),
+  "Live preview must use an HTTPS custom domain. Direct *.vercel.app URLs are not allowed."
+).transform((value) => value?.trim() || void 0);
 var productSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(2),
@@ -1762,7 +1801,16 @@ var productSchema = z.object({
   unlimitedStock: z.boolean().optional(),
   features: z.array(z.string()).optional(),
   requirements: z.array(z.string()).optional(),
-  faqs: z.array(z.any()).optional()
+  faqs: z.array(z.any()).optional(),
+  previewUrl: previewUrlSchema
+}).superRefine((product, context) => {
+  if (product.previewUrl?.startsWith("/") && product.previewUrl !== `/demos/${product.id}/`) {
+    context.addIssue({
+      code: "custom",
+      path: ["previewUrl"],
+      message: `Built-in preview path must match this product ID: /demos/${product.id}/`
+    });
+  }
 });
 var couponSchema = z.object({
   id: z.string().min(1),
@@ -2208,7 +2256,8 @@ function normalizeProductAssets(product, fallback) {
     features: normalizeStringArray(product?.features),
     requirements: normalizeStringArray(product?.requirements),
     whatsIncluded: normalizeStringArray(product?.whatsIncluded),
-    faqs: Array.isArray(product?.faqs) ? product.faqs : []
+    faqs: Array.isArray(product?.faqs) ? product.faqs : [],
+    previewUrl: normalizeProductPreviewUrl(product?.previewUrl, product?.id) || normalizeProductPreviewUrl(fallback?.previewUrl, fallback?.id)
   };
   delete normalized.licenseTypes;
   delete normalized.licenseTerms;

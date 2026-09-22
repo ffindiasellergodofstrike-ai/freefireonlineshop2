@@ -57,6 +57,7 @@ export const PRODUCTS: Product[] = [
     fileFormat: 'HTML, CSS, JS (ZIP Archive)',
     fileSize: '6.7 KB',
     downloadUrl: '/downloads/linknest-pro-template.zip',
+    previewUrl: '/demos/linknest-pro/',
     version: '',
     features: [
       'Responsive Mobile & Desktop Layout',
@@ -149,6 +150,7 @@ export const PRODUCTS: Product[] = [
     fileFormat: 'React/Vite-ready (ZIP Archive)',
     fileSize: '1.2 MB',
     downloadUrl: '/downloads/neura-ai-template.zip',
+    previewUrl: '/demos/neura-ai/',
     version: '1.0.0',
     features: [
       '🤖 AI SaaS Design: Modern interface specifically designed for AI and SaaS products.',
@@ -264,6 +266,7 @@ export const PRODUCTS: Product[] = [
     fileFormat: 'React/Vite-ready (ZIP Archive)',
     fileSize: '1.4 MB',
     downloadUrl: '/downloads/finora-template.zip',
+    previewUrl: '/demos/finora/',
     version: '1.0.0',
     features: [
       '💳 Fintech-Focused Design: Designed specifically around modern financial technology products and services.',
@@ -370,6 +373,7 @@ export const PRODUCTS: Product[] = [
     fileFormat: 'React/Vite-ready (ZIP Archive)',
     fileSize: '1.6 MB',
     downloadUrl: '/downloads/learnify-template.zip',
+    previewUrl: '/demos/learnify/',
     version: '1.0.0',
     features: [
       '🎓 Complete E-Learning Design: A professional education-focused interface designed around online courses.',
@@ -484,6 +488,7 @@ export const PRODUCTS: Product[] = [
     fileFormat: 'React/Vite-ready (ZIP Archive)',
     fileSize: '2.1 MB',
     downloadUrl: '/downloads/velora-template.zip',
+    previewUrl: '/demos/velora/',
     version: '1.0.0',
     features: [
       '🛍️ Complete Shopping Experience: A complete frontend shopping flow from product discovery to checkout and order confirmation.',
@@ -606,6 +611,7 @@ export const PRODUCTS: Product[] = [
     fileFormat: 'React/Vite-ready (ZIP Archive)',
     fileSize: '3.4 MB',
     downloadUrl: '/downloads/workhub-template.zip',
+    previewUrl: '/demos/workhub/',
     version: '1.0.0',
     features: [
       '👤 Dual Buyer & Seller accounts: Smooth seller onboarding with profile bio, custom skills, languages, education and certs.',
