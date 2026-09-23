@@ -26,7 +26,6 @@ import {
 // Run initial seed on startup
 runServerSeed().catch(err => console.warn('Startup seed error:', err));
 
-const APP_URL = (process.env.APP_URL || 'http://localhost:3000').trim();
 const EASEBUZZ_KEY = (process.env.EASEBUZZ_KEY || '').trim();
 const EASEBUZZ_SALT = (process.env.EASEBUZZ_SALT || '').trim();
 const rawEasebuzzEnv = (process.env.EASEBUZZ_ENV || 'test').trim().toLowerCase();
@@ -38,15 +37,18 @@ const EASEBUZZ_BASE_URL = EASEBUZZ_ENV === 'prod'
   : 'https://testpay.easebuzz.in';
 
 const getHostUrl = (req: Request): string => {
-  if (APP_URL && APP_URL.startsWith('http') && !APP_URL.includes('localhost')) {
-    return APP_URL.replace(/\/+$/, '');
+  const origin = req.headers.origin;
+  if (typeof origin === 'string' && origin.startsWith('http')) {
+    return origin.replace(/\/+$/, '');
   }
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  const proto = req.headers['x-forwarded-proto'] || 'https';
+  const forwardedHost = req.headers['x-forwarded-host'];
+  const host = Array.isArray(forwardedHost) ? forwardedHost[0] : (forwardedHost || req.headers.host);
+  const proto = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
   if (host) {
-    return `${proto}://${host}`.replace(/\/+$/, '');
+    const cleanHost = String(host).split(',')[0].trim();
+    return `${proto}://${cleanHost}`.replace(/\/+$/, '');
   }
-  return APP_URL.replace(/\/+$/, '');
+  return 'https://www.ffdigital.shop';
 };
 
 const easebuzzHash = (data: string): string => {
@@ -106,7 +108,9 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: APP_URL,
+  origin: (origin, callback) => {
+    callback(null, true);
+  },
   credentials: true,
 }));
 

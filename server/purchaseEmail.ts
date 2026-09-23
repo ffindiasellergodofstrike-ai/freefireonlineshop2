@@ -19,7 +19,7 @@ export interface PurchaseEmailOptions {
   invoiceUrl?: string;
 }
 
-const getAppUrl = (): string => (process.env.APP_URL || 'https://www.ffdigital.shop').replace(/\/+$/, '');
+const getAppUrl = (): string => 'https://www.ffdigital.shop';
 
 const escapeHtml = (value: unknown): string => String(value ?? '')
   .replace(/&/g, '&amp;')

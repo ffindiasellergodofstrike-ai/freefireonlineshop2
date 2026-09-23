@@ -34,19 +34,12 @@ test('email download tokens are random and stored by one-way hash', () => {
 });
 
 test('email item and invoice URLs stay on the application domain', () => {
-  const previous = process.env.APP_URL;
-  process.env.APP_URL = 'https://shop.example.com/';
-  try {
-    const url = buildEmailDownloadUrl('safe_token');
-    const invoiceUrl = buildInvoiceDownloadUrl('invoice_token');
-    assert.equal(url, 'https://shop.example.com/api/downloads/email?token=safe_token');
-    assert.equal(invoiceUrl, 'https://shop.example.com/api/invoices/email?token=invoice_token');
-    assert.doesNotMatch(url, /mega\.nz/i);
-    assert.doesNotMatch(invoiceUrl, /mega\.nz/i);
-  } finally {
-    if (previous === undefined) delete process.env.APP_URL;
-    else process.env.APP_URL = previous;
-  }
+  const url = buildEmailDownloadUrl('safe_token');
+  const invoiceUrl = buildInvoiceDownloadUrl('invoice_token');
+  assert.equal(url, 'https://www.ffdigital.shop/api/downloads/email?token=safe_token');
+  assert.equal(invoiceUrl, 'https://www.ffdigital.shop/api/invoices/email?token=invoice_token');
+  assert.doesNotMatch(url, /mega\.nz/i);
+  assert.doesNotMatch(invoiceUrl, /mega\.nz/i);
 });
 
 test('professional purchase email escapes data and includes item, invoice, and terms sections', () => {

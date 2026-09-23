@@ -2017,7 +2017,7 @@ adminRouter.post("/uploads/direct", upload.single("image"), async (req, res) => 
     if (!file) {
       return res.status(400).json({ success: false, message: "No image file provided.", requestId });
     }
-    const bucket = process.env.FIREBASE_STORAGE_BUCKET || "ffdigital.appspot.com";
+    const bucket = process.env.FIREBASE_STORAGE_BUCKET || "ffdigital-shop.appspot.com";
     const filename = `products/${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`;
     const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodeURIComponent(filename)}`;
     const response = await fetch(uploadUrl, {
@@ -2318,7 +2318,7 @@ async function runServerSeed() {
       console.log("Seeding initial coupons into Firebase RTDB...");
       const defaultCoupons = [
         { id: "coup_1", code: "SAVE10", discountPercent: 10, description: "10% off your entire order", minSpend: 0, active: true, usageCount: 0, usageLimit: 1e3 },
-        { id: "coup_2", code: "FFDIGITAL20", discountPercent: 20, description: "20% off for developer community", minSpend: 500, active: true, usageCount: 0, usageLimit: 500 },
+        { id: "coup_2", code: "DIGITAL20", discountPercent: 20, description: "20% off for developer community", minSpend: 500, active: true, usageCount: 0, usageLimit: 500 },
         { id: "coup_3", code: "WELCOME100", discountPercent: 0, flatAmount: 100, description: "\u20B9100 flat discount", minSpend: 400, active: true, usageCount: 0, usageLimit: 200 }
       ];
       for (const coup of defaultCoupons) {
@@ -2330,9 +2330,9 @@ async function runServerSeed() {
       console.log("Seeding initial store settings...");
       await FirebaseRtdb.set("settings", {
         storeName: "FFDigital",
-        supportEmail: "freefireshop.support@gmail.com",
-        supportPhone: "+91 9876543210",
-        appUrl: "https://ais-dev-idexjqz7zkbomriwtujuzx-234817242937.asia-southeast1.run.app",
+        supportEmail: "ffdigital.support@gmail.com",
+        supportPhone: "+91 9793970031",
+        appUrl: "https://www.ffdigital.shop/",
         paymentEnvironment: "test",
         maintenanceMode: false,
         featuredProductIds: ["linknest-pro"],
@@ -2361,7 +2361,7 @@ async function runServerSeed() {
 import crypto3 from "crypto";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { Resend } from "resend";
-var getAppUrl = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
+var getAppUrl = () => "https://www.ffdigital.shop";
 var escapeHtml = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 var toPdfText = (value) => String(value ?? "").normalize("NFKD").replace(/[^\x20-\x7E]/g, "?");
 var money = (value) => `INR ${Number(value || 0).toFixed(2)}`;
@@ -2394,7 +2394,7 @@ async function buildInvoicePdf(order) {
     drawText(text, right - font.widthOfTextAtSize(text, size), y2, size, font, color);
   };
   const businessName = process.env.INVOICE_BUSINESS_NAME || "FFDigital";
-  const supportEmail = process.env.INVOICE_SUPPORT_EMAIL || "support@yourdomain.com";
+  const supportEmail = process.env.INVOICE_SUPPORT_EMAIL || "ffdigital.support@gmail.com";
   const businessAddress = process.env.INVOICE_BUSINESS_ADDRESS || "Digital Products Store, India";
   const gstin = process.env.INVOICE_GSTIN?.trim();
   const receiptTitle = gstin ? "TAX INVOICE" : "PAYMENT RECEIPT";
@@ -2482,7 +2482,7 @@ function buildPurchaseEmailHtml(order, links, options = {}) {
   const orderNumber = escapeHtml(order.orderNumber || order.id || "");
   const total = escapeHtml(money(order.total ?? order.amount));
   const orderDate = escapeHtml(new Date(order.updatedAt || order.createdAt || Date.now()).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }));
-  const supportEmail = escapeHtml(process.env.INVOICE_SUPPORT_EMAIL || "support@yourdomain.com");
+  const supportEmail = escapeHtml(process.env.INVOICE_SUPPORT_EMAIL || "ffdigital.support@gmail.com");
   const accountUrl = `${getAppUrl()}/account`;
   const linkRows = links.map((link) => {
     const expiry = new Date(link.expiresAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
@@ -2579,12 +2579,26 @@ async function sendPurchaseConfirmationEmail(order, links, options = {}) {
 
 // server/app.ts
 runServerSeed().catch((err) => console.warn("Startup seed error:", err));
-var APP_URL = process.env.APP_URL || "http://localhost:3000";
-var EASEBUZZ_KEY = process.env.EASEBUZZ_KEY || "";
-var EASEBUZZ_SALT = process.env.EASEBUZZ_SALT || "";
-var EASEBUZZ_ENV = process.env.EASEBUZZ_ENV || "test";
+var EASEBUZZ_KEY = (process.env.EASEBUZZ_KEY || "").trim();
+var EASEBUZZ_SALT = (process.env.EASEBUZZ_SALT || "").trim();
+var rawEasebuzzEnv = (process.env.EASEBUZZ_ENV || "test").trim().toLowerCase();
+var EASEBUZZ_ENV = rawEasebuzzEnv.startsWith("prod") ? "prod" : "test";
 var CRON_SECRET = process.env.CRON_SECRET || "";
 var EASEBUZZ_BASE_URL = EASEBUZZ_ENV === "prod" ? "https://pay.easebuzz.in" : "https://testpay.easebuzz.in";
+var getHostUrl = (req) => {
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && origin.startsWith("http")) {
+    return origin.replace(/\/+$/, "");
+  }
+  const forwardedHost = req.headers["x-forwarded-host"];
+  const host = Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost || req.headers.host;
+  const proto = req.headers["x-forwarded-proto"] || (req.secure ? "https" : "http");
+  if (host) {
+    const cleanHost = String(host).split(",")[0].trim();
+    return `${proto}://${cleanHost}`.replace(/\/+$/, "");
+  }
+  return "https://www.ffdigital.shop";
+};
 var easebuzzHash = (data) => {
   return crypto4.createHash("sha512").update(data).digest("hex");
 };
@@ -2593,11 +2607,34 @@ var getProductCatalog = async () => {
   return mergeProductCatalog(PRODUCTS, databaseProducts);
 };
 var verifyEasebuzzHash = (params, salt) => {
+  if (!params || !params.hash || !salt) return false;
   const { hash, status, udf10, udf9, udf8, udf7, udf6, udf5, udf4, udf3, udf2, udf1, email, firstname, productinfo, amount, txnid, key } = params;
-  const hashString = `${salt}|${status}|${udf10 || ""}|${udf9 || ""}|${udf8 || ""}|${udf7 || ""}|${udf6 || ""}|${udf5 || ""}|${udf4 || ""}|${udf3 || ""}|${udf2 || ""}|${udf1 || ""}|${email || ""}|${firstname || ""}|${productinfo || ""}|${amount || ""}|${txnid || ""}|${key || ""}`;
+  const hashString = [
+    salt,
+    status ?? "",
+    udf10 ?? "",
+    udf9 ?? "",
+    udf8 ?? "",
+    udf7 ?? "",
+    udf6 ?? "",
+    udf5 ?? "",
+    udf4 ?? "",
+    udf3 ?? "",
+    udf2 ?? "",
+    udf1 ?? "",
+    email ?? "",
+    firstname ?? "",
+    productinfo ?? "",
+    amount ?? "",
+    txnid ?? "",
+    key ?? ""
+  ].join("|");
   const calculatedHash = easebuzzHash(hashString);
   try {
-    return crypto4.timingSafeEqual(Buffer.from(hash || ""), Buffer.from(calculatedHash));
+    return crypto4.timingSafeEqual(
+      Buffer.from(String(hash).toLowerCase()),
+      Buffer.from(calculatedHash.toLowerCase())
+    );
   } catch {
     return false;
   }
@@ -2608,7 +2645,9 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 app.use(cors({
-  origin: APP_URL,
+  origin: (origin, callback) => {
+    callback(null, true);
+  },
   credentials: true
 }));
 app.use(cookieParser());
@@ -3000,19 +3039,52 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
     if (String(order.paymentStatus).toUpperCase() === "PAID") {
       return res.status(400).json({ success: false, message: "Order is already paid." });
     }
-    const phone = order.customer?.phone || "";
-    const phoneRegex = /^[6-9][0-9]{9}$/;
-    if (!phone || !phoneRegex.test(phone)) {
-      return res.status(400).json({ success: false, message: "Valid 10-digit phone number is required at checkout for Easebuzz." });
+    const rawPhone = order.customer?.phone || order.customerPhone || "";
+    const cleanPhone = String(rawPhone).replace(/\D/g, "").slice(-10);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      return res.status(400).json({ success: false, message: "Valid 10-digit mobile number is required for payment." });
     }
-    const amount = Number(order.total || order.amount).toFixed(2);
-    const txnid = order.orderNumber;
-    const firstname = order.customer?.fullName || "Customer";
-    const email = order.customer?.email || req.userEmail || "";
-    const productinfo = (order.items || []).map((i) => i.productTitle).join(", ").substring(0, 100);
-    const surl = `${APP_URL}/api/payments/easebuzz/callback`;
-    const furl = `${APP_URL}/api/payments/easebuzz/callback`;
-    const hashString = `${EASEBUZZ_KEY}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|||||||||||${EASEBUZZ_SALT}`;
+    const phone = cleanPhone;
+    const amount = Number(order.total ?? order.amount ?? 0).toFixed(2);
+    const txnid = String(order.orderNumber || order.id || `TXN${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, "").substring(0, 40);
+    const rawFirstname = order.customer?.fullName || order.customerName || "Customer";
+    const firstname = String(rawFirstname).replace(/[^a-zA-Z0-9\s]/g, " ").replace(/\s+/g, " ").trim().substring(0, 50) || "Customer";
+    const email = String(order.customer?.email || order.customerEmail || req.userEmail || "").trim().toLowerCase();
+    const rawProductInfo = (order.items || []).map((i) => i.productTitle).join(" ") || order.productNameSnapshot || "Digital Products";
+    const productinfo = rawProductInfo.replace(/[^a-zA-Z0-9\s_-]/g, " ").replace(/\s+/g, " ").trim().substring(0, 100) || "Digital Products";
+    const baseAppUrl = getHostUrl(req);
+    const surl = `${baseAppUrl}/api/payments/easebuzz/callback`;
+    const furl = `${baseAppUrl}/api/payments/easebuzz/callback`;
+    const udf1 = String(order.id || "").substring(0, 50);
+    const udf2 = "";
+    const udf3 = "";
+    const udf4 = "";
+    const udf5 = "";
+    const udf6 = "";
+    const udf7 = "";
+    const udf8 = "";
+    const udf9 = "";
+    const udf10 = "";
+    const hashSequence = [
+      EASEBUZZ_KEY,
+      txnid,
+      amount,
+      productinfo,
+      firstname,
+      email,
+      udf1,
+      udf2,
+      udf3,
+      udf4,
+      udf5,
+      udf6,
+      udf7,
+      udf8,
+      udf9,
+      udf10,
+      EASEBUZZ_SALT
+    ];
+    const hashString = hashSequence.join("|");
     const hash = easebuzzHash(hashString);
     const formData = new URLSearchParams();
     formData.append("key", EASEBUZZ_KEY);
@@ -3025,6 +3097,16 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
     formData.append("surl", surl);
     formData.append("furl", furl);
     formData.append("hash", hash);
+    formData.append("udf1", udf1);
+    formData.append("udf2", udf2);
+    formData.append("udf3", udf3);
+    formData.append("udf4", udf4);
+    formData.append("udf5", udf5);
+    formData.append("udf6", udf6);
+    formData.append("udf7", udf7);
+    formData.append("udf8", udf8);
+    formData.append("udf9", udf9);
+    formData.append("udf10", udf10);
     const ebzResponse = await fetch(`${EASEBUZZ_BASE_URL}/payment/initiateLink`, {
       method: "POST",
       headers: {
@@ -3033,23 +3115,30 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
       },
       body: formData.toString()
     });
-    const ebzData = await ebzResponse.json();
-    if (ebzData.status === 1) {
+    const responseText = await ebzResponse.text();
+    let ebzData = null;
+    try {
+      ebzData = JSON.parse(responseText);
+    } catch {
+      return res.status(502).json({ success: false, message: "Invalid response from Easebuzz payment gateway." });
+    }
+    if (ebzData && ebzData.status === 1 && ebzData.data) {
       order.easebuzzAccessKey = ebzData.data;
       order.status = "PENDING_PAYMENT";
       order.paymentStatus = "PENDING";
       await FirebaseRtdb.saveGlobalOrder(order);
-      res.json({
+      return res.json({
         success: true,
         accessKey: ebzData.data,
         merchantKey: EASEBUZZ_KEY,
         environment: EASEBUZZ_ENV
       });
     } else {
-      res.status(400).json({ success: false, message: ebzData.data || "Failed to initiate Easebuzz payment." });
+      const errorMessage = typeof ebzData?.data === "string" ? ebzData.data : ebzData?.error_desc || ebzData?.message || "Failed to initiate Easebuzz payment.";
+      return res.status(400).json({ success: false, message: errorMessage });
     }
   } catch (err) {
-    res.status(500).json({ success: false, message: "Easebuzz payment initiation failed." });
+    return res.status(500).json({ success: false, message: "Easebuzz payment initiation failed." });
   }
 });
 var isOrderFulfilled = async (order) => {
@@ -3176,11 +3265,12 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
     }
     return { success: true, status: "PAID", orderId: globalOrder.id, message: "Already paid" };
   }
-  const txnid = globalOrder.orderNumber || globalOrder.id;
+  const txnid = String(globalOrder.orderNumber || globalOrder.id).replace(/[^a-zA-Z0-9_-]/g, "").substring(0, 40);
   const amount = Number(globalOrder.total || globalOrder.amount).toFixed(2);
-  const email = globalOrder.customer?.email || globalOrder.customerEmail || "";
-  const phone = globalOrder.customer?.phone || "";
-  const transHashStr = `${EASEBUZZ_KEY}|${txnid}|${amount}|${email}|${phone}|${EASEBUZZ_SALT}`;
+  const email = String(globalOrder.customer?.email || globalOrder.customerEmail || "").trim().toLowerCase();
+  const rawPhone = globalOrder.customer?.phone || globalOrder.customerPhone || "";
+  const phone = String(rawPhone).replace(/\D/g, "").slice(-10);
+  const transHashStr = [EASEBUZZ_KEY, txnid, amount, email, phone, EASEBUZZ_SALT].join("|");
   const transHash = easebuzzHash(transHashStr);
   const transFormData = new URLSearchParams();
   transFormData.append("key", EASEBUZZ_KEY);
@@ -3288,6 +3378,7 @@ app.post("/api/payments/easebuzz/callback", async (req, res) => {
     if (!globalOrder) {
       return res.status(404).send("Order not found");
     }
+    const baseAppUrl = getHostUrl(req);
     if (status !== "success") {
       globalOrder.status = "FAILED";
       globalOrder.paymentStatus = "FAILED";
@@ -3295,13 +3386,13 @@ app.post("/api/payments/easebuzz/callback", async (req, res) => {
       globalOrder.failureReason = params.error_Message || "Payment failed on gateway";
       globalOrder.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
       await FirebaseRtdb.saveGlobalOrder(globalOrder);
-      return res.redirect(`${APP_URL}/checkout?status=failed&orderId=${globalOrder.id}`);
+      return res.redirect(`${baseAppUrl}/checkout?status=failed&orderId=${globalOrder.id}`);
     }
     const syncResult = await verifyAndSyncEasebuzzOrder(txnid);
     if (syncResult.success) {
-      return res.redirect(`${APP_URL}/checkout?status=success&orderId=${globalOrder.id}`);
+      return res.redirect(`${baseAppUrl}/checkout?status=success&orderId=${globalOrder.id}`);
     } else {
-      return res.redirect(`${APP_URL}/checkout?status=failed&orderId=${globalOrder.id}`);
+      return res.redirect(`${baseAppUrl}/checkout?status=failed&orderId=${globalOrder.id}`);
     }
   } catch (err) {
     res.status(500).send("Internal server error");
