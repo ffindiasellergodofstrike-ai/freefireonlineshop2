@@ -22,6 +22,15 @@ import {
   sendPurchaseConfirmationEmail,
   type PurchaseEmailLink,
 } from './purchaseEmail';
+import {
+  buildEasebuzzInitiatePayload,
+  formatEasebuzzAmount,
+  generateEasebuzzRetrieveHash,
+  getEasebuzzBaseUrl,
+  sanitizeFieldText,
+  sanitizePhoneNumber,
+  verifyEasebuzzCallbackHash,
+} from './easebuzz';
 
 // Run initial seed on startup
 runServerSeed().catch(err => console.warn('Startup seed error:', err));
@@ -32,9 +41,7 @@ const rawEasebuzzEnv = (process.env.EASEBUZZ_ENV || 'test').trim().toLowerCase()
 const EASEBUZZ_ENV: 'prod' | 'test' = rawEasebuzzEnv.startsWith('prod') ? 'prod' : 'test';
 const CRON_SECRET = process.env.CRON_SECRET || '';
 
-const EASEBUZZ_BASE_URL = EASEBUZZ_ENV === 'prod' 
-  ? 'https://pay.easebuzz.in' 
-  : 'https://testpay.easebuzz.in';
+const EASEBUZZ_BASE_URL = getEasebuzzBaseUrl(EASEBUZZ_ENV);
 
 const getHostUrl = (req: Request): string => {
   const origin = req.headers.origin;
@@ -51,47 +58,9 @@ const getHostUrl = (req: Request): string => {
   return 'https://www.ffdigital.shop';
 };
 
-const easebuzzHash = (data: string): string => {
-  return crypto.createHash('sha512').update(data).digest('hex');
-};
-
 const getProductCatalog = async (): Promise<any[]> => {
   const databaseProducts = await FirebaseRtdb.getAllProducts();
   return mergeProductCatalog(PRODUCTS, databaseProducts);
-};
-
-const verifyEasebuzzHash = (params: any, salt: string): boolean => {
-  if (!params || !params.hash || !salt) return false;
-  const { hash, status, udf10, udf9, udf8, udf7, udf6, udf5, udf4, udf3, udf2, udf1, email, firstname, productinfo, amount, txnid, key } = params;
-  const hashString = [
-    salt,
-    status ?? '',
-    udf10 ?? '',
-    udf9 ?? '',
-    udf8 ?? '',
-    udf7 ?? '',
-    udf6 ?? '',
-    udf5 ?? '',
-    udf4 ?? '',
-    udf3 ?? '',
-    udf2 ?? '',
-    udf1 ?? '',
-    email ?? '',
-    firstname ?? '',
-    productinfo ?? '',
-    amount ?? '',
-    txnid ?? '',
-    key ?? ''
-  ].join('|');
-  const calculatedHash = easebuzzHash(hashString);
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(String(hash).toLowerCase()),
-      Buffer.from(calculatedHash.toLowerCase())
-    );
-  } catch {
-    return false;
-  }
 };
 
 export interface AuthenticatedRequest extends Request {
@@ -579,17 +548,21 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     }
 
     const rawPhone = order.customer?.phone || order.customerPhone || '';
-    const cleanPhone = String(rawPhone).replace(/\D/g, '').slice(-10);
-    if (!cleanPhone || cleanPhone.length !== 10) {
+    const phone = sanitizePhoneNumber(rawPhone);
+    if (!phone || phone.length !== 10) {
       return res.status(400).json({ success: false, message: 'Valid 10-digit mobile number is required for payment.' });
     }
-    const phone = cleanPhone;
 
-    const amount = Number(order.total ?? order.amount ?? 0).toFixed(2);
+    const amountObj = formatEasebuzzAmount(order.total ?? order.amount ?? 0);
+    if (!amountObj.valid) {
+      return res.status(400).json({ success: false, message: 'Invalid order amount. Amount must be a positive number.' });
+    }
+    const amount = amountObj.formatted;
+
     const txnid = `${order.orderNumber || 'ORD'}_${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 35);
     
     const rawFirstname = order.customer?.fullName || order.customerName || 'Customer';
-    const firstname = String(rawFirstname).trim().split(' ')[0].replace(/[^a-zA-Z0-9]/g, '') || 'Customer';
+    const firstname = sanitizeFieldText(String(rawFirstname).trim().split(' ')[0].replace(/[^a-zA-Z0-9]/g, ''), 50, 'Customer');
     
     const email = String(order.customer?.email || order.customerEmail || req.userEmail || '').trim().toLowerCase();
     const productinfo = 'FFDigital Products';
@@ -598,46 +571,28 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     const surl = `${baseAppUrl}/api/payments/easebuzz/callback`;
     const furl = `${baseAppUrl}/api/payments/easebuzz/callback`;
 
-    const hashSequence = [
-      EASEBUZZ_KEY,
+    const { payload } = buildEasebuzzInitiatePayload({
+      key: EASEBUZZ_KEY,
+      salt: EASEBUZZ_SALT,
       txnid,
       amount,
       productinfo,
       firstname,
       email,
-      '', // udf1
-      '', // udf2
-      '', // udf3
-      '', // udf4
-      '', // udf5
-      '', // udf6
-      '', // udf7
-      '', // udf8
-      '', // udf9
-      '', // udf10
-      EASEBUZZ_SALT
-    ];
-    const hashString = hashSequence.join('|');
-    const hash = easebuzzHash(hashString);
-
-    const formData = new URLSearchParams();
-    formData.append('key', EASEBUZZ_KEY);
-    formData.append('txnid', txnid);
-    formData.append('amount', amount);
-    formData.append('productinfo', productinfo);
-    formData.append('firstname', firstname);
-    formData.append('email', email);
-    formData.append('phone', phone);
-    formData.append('surl', surl);
-    formData.append('furl', furl);
-    formData.append('hash', hash);
-    formData.append('udf1', '');
-    formData.append('udf2', '');
-    formData.append('udf3', '');
-    formData.append('udf4', '');
-    formData.append('udf5', '');
-    formData.append('udf6', '');
-    formData.append('udf7', '');
+      phone,
+      surl,
+      furl,
+      udf1: '',
+      udf2: '',
+      udf3: '',
+      udf4: '',
+      udf5: '',
+      udf6: '',
+      udf7: '',
+      udf8: '',
+      udf9: '',
+      udf10: '',
+    });
 
     const ebzResponse = await fetch(`${EASEBUZZ_BASE_URL}/payment/initiateLink`, {
       method: 'POST',
@@ -645,7 +600,7 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'
       },
-      body: formData.toString()
+      body: payload.toString()
     });
 
     const responseText = await ebzResponse.text();
@@ -671,11 +626,13 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
         txnid,
       });
     } else {
-      const errorMessage = typeof ebzData?.data === 'string'
+      let rawMsg = typeof ebzData?.data === 'string'
         ? ebzData.data
         : (ebzData?.error_desc || ebzData?.message || 'Failed to initiate Easebuzz payment.');
-      console.error('[Easebuzz Gateway Error Response]:', ebzData);
-      return res.status(400).json({ success: false, message: errorMessage });
+      if (EASEBUZZ_KEY) rawMsg = rawMsg.replaceAll(EASEBUZZ_KEY, '[KEY]');
+      if (EASEBUZZ_SALT) rawMsg = rawMsg.replaceAll(EASEBUZZ_SALT, '[SALT]');
+      console.error('[Easebuzz Gateway Error]:', typeof ebzData === 'object' ? { status: ebzData?.status, error: rawMsg } : ebzData);
+      return res.status(400).json({ success: false, message: rawMsg });
     }
   } catch (err: any) {
     return res.status(500).json({ success: false, message: 'Easebuzz payment initiation failed.' });
@@ -836,14 +793,20 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
     return { success: true, status: 'PAID', orderId: globalOrder.id, message: 'Already paid' };
   }
 
-  const txnid = String(globalOrder.orderNumber || globalOrder.id).replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 40);
-  const amount = Number(globalOrder.total || globalOrder.amount).toFixed(2);
+  const txnid = String(globalOrder.transactionId || globalOrder.orderNumber || globalOrder.id).replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 40);
+  const amountObj = formatEasebuzzAmount(globalOrder.total || globalOrder.amount);
+  const amount = amountObj.formatted;
   const email = String(globalOrder.customer?.email || globalOrder.customerEmail || '').trim().toLowerCase();
-  const rawPhone = globalOrder.customer?.phone || globalOrder.customerPhone || '';
-  const phone = String(rawPhone).replace(/\D/g, '').slice(-10);
+  const phone = sanitizePhoneNumber(globalOrder.customer?.phone || globalOrder.customerPhone || '');
 
-  const transHashStr = [EASEBUZZ_KEY, txnid, amount, email, phone, EASEBUZZ_SALT].join('|');
-  const transHash = easebuzzHash(transHashStr);
+  const transHash = generateEasebuzzRetrieveHash({
+    key: EASEBUZZ_KEY,
+    txnid,
+    amount,
+    email,
+    phone,
+    salt: EASEBUZZ_SALT,
+  });
 
   const transFormData = new URLSearchParams();
   transFormData.append('key', EASEBUZZ_KEY);
@@ -950,7 +913,7 @@ app.post('/api/payments/easebuzz/callback', async (req: Request, res: Response) 
     }
 
     const params = req.body;
-    if (!verifyEasebuzzHash(params, EASEBUZZ_SALT)) {
+    if (!verifyEasebuzzCallbackHash(params, EASEBUZZ_SALT)) {
       return res.status(400).send('Invalid signature');
     }
 

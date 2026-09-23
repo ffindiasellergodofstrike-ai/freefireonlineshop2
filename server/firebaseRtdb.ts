@@ -505,8 +505,20 @@ export class FirebaseRtdb {
     await this.set(`orders/${order.id}`, order);
   }
 
-  public static async getGlobalOrder(orderId: string): Promise<any | null> {
-    return await this.get(`orders/${orderId}`);
+  public static async getGlobalOrder(orderIdOrTxnId: string): Promise<any | null> {
+    if (!orderIdOrTxnId) return null;
+    const direct = await this.get(`orders/${orderIdOrTxnId}`);
+    if (direct) return direct;
+
+    const allOrdersObj = await this.get<Record<string, any>>('orders');
+    if (allOrdersObj && typeof allOrdersObj === 'object') {
+      const allOrders = Object.values(allOrdersObj);
+      const matched = allOrders.find((o: any) => 
+        o && (o.id === orderIdOrTxnId || o.transactionId === orderIdOrTxnId || o.orderNumber === orderIdOrTxnId)
+      );
+      if (matched) return matched;
+    }
+    return null;
   }
 
   public static async saveGlobalOrder(order: any): Promise<void> {
