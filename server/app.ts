@@ -26,15 +26,28 @@ import {
 // Run initial seed on startup
 runServerSeed().catch(err => console.warn('Startup seed error:', err));
 
-const APP_URL = process.env.APP_URL || 'http://localhost:3000';
-const EASEBUZZ_KEY = process.env.EASEBUZZ_KEY || '';
-const EASEBUZZ_SALT = process.env.EASEBUZZ_SALT || '';
-const EASEBUZZ_ENV = process.env.EASEBUZZ_ENV || 'test';
+const APP_URL = (process.env.APP_URL || 'http://localhost:3000').trim();
+const EASEBUZZ_KEY = (process.env.EASEBUZZ_KEY || '').trim();
+const EASEBUZZ_SALT = (process.env.EASEBUZZ_SALT || '').trim();
+const rawEasebuzzEnv = (process.env.EASEBUZZ_ENV || 'test').trim().toLowerCase();
+const EASEBUZZ_ENV: 'prod' | 'test' = rawEasebuzzEnv.startsWith('prod') ? 'prod' : 'test';
 const CRON_SECRET = process.env.CRON_SECRET || '';
 
 const EASEBUZZ_BASE_URL = EASEBUZZ_ENV === 'prod' 
   ? 'https://pay.easebuzz.in' 
   : 'https://testpay.easebuzz.in';
+
+const getHostUrl = (req: Request): string => {
+  if (APP_URL && APP_URL.startsWith('http') && !APP_URL.includes('localhost')) {
+    return APP_URL.replace(/\/+$/, '');
+  }
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  if (host) {
+    return `${proto}://${host}`.replace(/\/+$/, '');
+  }
+  return APP_URL.replace(/\/+$/, '');
+};
 
 const easebuzzHash = (data: string): string => {
   return crypto.createHash('sha512').update(data).digest('hex');
@@ -46,11 +59,34 @@ const getProductCatalog = async (): Promise<any[]> => {
 };
 
 const verifyEasebuzzHash = (params: any, salt: string): boolean => {
+  if (!params || !params.hash || !salt) return false;
   const { hash, status, udf10, udf9, udf8, udf7, udf6, udf5, udf4, udf3, udf2, udf1, email, firstname, productinfo, amount, txnid, key } = params;
-  const hashString = `${salt}|${status}|${udf10 || ''}|${udf9 || ''}|${udf8 || ''}|${udf7 || ''}|${udf6 || ''}|${udf5 || ''}|${udf4 || ''}|${udf3 || ''}|${udf2 || ''}|${udf1 || ''}|${email || ''}|${firstname || ''}|${productinfo || ''}|${amount || ''}|${txnid || ''}|${key || ''}`;
+  const hashString = [
+    salt,
+    status ?? '',
+    udf10 ?? '',
+    udf9 ?? '',
+    udf8 ?? '',
+    udf7 ?? '',
+    udf6 ?? '',
+    udf5 ?? '',
+    udf4 ?? '',
+    udf3 ?? '',
+    udf2 ?? '',
+    udf1 ?? '',
+    email ?? '',
+    firstname ?? '',
+    productinfo ?? '',
+    amount ?? '',
+    txnid ?? '',
+    key ?? ''
+  ].join('|');
   const calculatedHash = easebuzzHash(hashString);
   try {
-    return crypto.timingSafeEqual(Buffer.from(hash || ''), Buffer.from(calculatedHash));
+    return crypto.timingSafeEqual(
+      Buffer.from(String(hash).toLowerCase()),
+      Buffer.from(calculatedHash.toLowerCase())
+    );
   } catch {
     return false;
   }
@@ -538,22 +574,59 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
       return res.status(400).json({ success: false, message: 'Order is already paid.' });
     }
 
-    const phone = order.customer?.phone || '';
-    const phoneRegex = /^[6-9][0-9]{9}$/;
-    if (!phone || !phoneRegex.test(phone)) {
-      return res.status(400).json({ success: false, message: 'Valid 10-digit phone number is required at checkout for Easebuzz.' });
+    const rawPhone = order.customer?.phone || order.customerPhone || '';
+    const cleanPhone = String(rawPhone).replace(/\D/g, '').slice(-10);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      return res.status(400).json({ success: false, message: 'Valid 10-digit mobile number is required for payment.' });
     }
+    const phone = cleanPhone;
 
-    const amount = Number(order.total || order.amount).toFixed(2);
-    const txnid = order.orderNumber;
-    const firstname = order.customer?.fullName || 'Customer';
-    const email = order.customer?.email || req.userEmail || '';
-    const productinfo = (order.items || []).map((i: any) => i.productTitle).join(', ').substring(0, 100);
+    const amount = Number(order.total ?? order.amount ?? 0).toFixed(2);
+    const txnid = String(order.orderNumber || order.id || `TXN${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 40);
+    
+    const rawFirstname = order.customer?.fullName || order.customerName || 'Customer';
+    const firstname = String(rawFirstname).replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 50) || 'Customer';
+    
+    const email = String(order.customer?.email || order.customerEmail || req.userEmail || '').trim().toLowerCase();
+    
+    const rawProductInfo = (order.items || []).map((i: any) => i.productTitle).join(' ') || order.productNameSnapshot || 'Digital Products';
+    const productinfo = rawProductInfo.replace(/[^a-zA-Z0-9\s_-]/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 100) || 'Digital Products';
 
-    const surl = `${APP_URL}/api/payments/easebuzz/callback`;
-    const furl = `${APP_URL}/api/payments/easebuzz/callback`;
+    const baseAppUrl = getHostUrl(req);
+    const surl = `${baseAppUrl}/api/payments/easebuzz/callback`;
+    const furl = `${baseAppUrl}/api/payments/easebuzz/callback`;
 
-    const hashString = `${EASEBUZZ_KEY}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|||||||||||${EASEBUZZ_SALT}`;
+    const udf1 = String(order.id || '').substring(0, 50);
+    const udf2 = '';
+    const udf3 = '';
+    const udf4 = '';
+    const udf5 = '';
+    const udf6 = '';
+    const udf7 = '';
+    const udf8 = '';
+    const udf9 = '';
+    const udf10 = '';
+
+    const hashSequence = [
+      EASEBUZZ_KEY,
+      txnid,
+      amount,
+      productinfo,
+      firstname,
+      email,
+      udf1,
+      udf2,
+      udf3,
+      udf4,
+      udf5,
+      udf6,
+      udf7,
+      udf8,
+      udf9,
+      udf10,
+      EASEBUZZ_SALT
+    ];
+    const hashString = hashSequence.join('|');
     const hash = easebuzzHash(hashString);
 
     const formData = new URLSearchParams();
@@ -567,6 +640,16 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     formData.append('surl', surl);
     formData.append('furl', furl);
     formData.append('hash', hash);
+    formData.append('udf1', udf1);
+    formData.append('udf2', udf2);
+    formData.append('udf3', udf3);
+    formData.append('udf4', udf4);
+    formData.append('udf5', udf5);
+    formData.append('udf6', udf6);
+    formData.append('udf7', udf7);
+    formData.append('udf8', udf8);
+    formData.append('udf9', udf9);
+    formData.append('udf10', udf10);
 
     const ebzResponse = await fetch(`${EASEBUZZ_BASE_URL}/payment/initiateLink`, {
       method: 'POST',
@@ -577,23 +660,33 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
       body: formData.toString()
     });
 
-    const ebzData = await ebzResponse.json();
-    if (ebzData.status === 1) {
+    const responseText = await ebzResponse.text();
+    let ebzData: any = null;
+    try {
+      ebzData = JSON.parse(responseText);
+    } catch {
+      return res.status(502).json({ success: false, message: 'Invalid response from Easebuzz payment gateway.' });
+    }
+
+    if (ebzData && ebzData.status === 1 && ebzData.data) {
       order.easebuzzAccessKey = ebzData.data;
       order.status = 'PENDING_PAYMENT';
       order.paymentStatus = 'PENDING';
       await FirebaseRtdb.saveGlobalOrder(order);
-      res.json({
+      return res.json({
         success: true,
         accessKey: ebzData.data,
         merchantKey: EASEBUZZ_KEY,
         environment: EASEBUZZ_ENV,
       });
     } else {
-      res.status(400).json({ success: false, message: ebzData.data || 'Failed to initiate Easebuzz payment.' });
+      const errorMessage = typeof ebzData?.data === 'string'
+        ? ebzData.data
+        : (ebzData?.error_desc || ebzData?.message || 'Failed to initiate Easebuzz payment.');
+      return res.status(400).json({ success: false, message: errorMessage });
     }
   } catch (err: any) {
-    res.status(500).json({ success: false, message: 'Easebuzz payment initiation failed.' });
+    return res.status(500).json({ success: false, message: 'Easebuzz payment initiation failed.' });
   }
 });
 
@@ -751,12 +844,13 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
     return { success: true, status: 'PAID', orderId: globalOrder.id, message: 'Already paid' };
   }
 
-  const txnid = globalOrder.orderNumber || globalOrder.id;
+  const txnid = String(globalOrder.orderNumber || globalOrder.id).replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 40);
   const amount = Number(globalOrder.total || globalOrder.amount).toFixed(2);
-  const email = globalOrder.customer?.email || globalOrder.customerEmail || '';
-  const phone = globalOrder.customer?.phone || '';
+  const email = String(globalOrder.customer?.email || globalOrder.customerEmail || '').trim().toLowerCase();
+  const rawPhone = globalOrder.customer?.phone || globalOrder.customerPhone || '';
+  const phone = String(rawPhone).replace(/\D/g, '').slice(-10);
 
-  const transHashStr = `${EASEBUZZ_KEY}|${txnid}|${amount}|${email}|${phone}|${EASEBUZZ_SALT}`;
+  const transHashStr = [EASEBUZZ_KEY, txnid, amount, email, phone, EASEBUZZ_SALT].join('|');
   const transHash = easebuzzHash(transHashStr);
 
   const transFormData = new URLSearchParams();
@@ -876,6 +970,7 @@ app.post('/api/payments/easebuzz/callback', async (req: Request, res: Response) 
       return res.status(404).send('Order not found');
     }
 
+    const baseAppUrl = getHostUrl(req);
     if (status !== 'success') {
       globalOrder.status = 'FAILED';
       globalOrder.paymentStatus = 'FAILED';
@@ -883,14 +978,14 @@ app.post('/api/payments/easebuzz/callback', async (req: Request, res: Response) 
       globalOrder.failureReason = params.error_Message || 'Payment failed on gateway';
       globalOrder.updatedAt = new Date().toISOString();
       await FirebaseRtdb.saveGlobalOrder(globalOrder);
-      return res.redirect(`${APP_URL}/checkout?status=failed&orderId=${globalOrder.id}`);
+      return res.redirect(`${baseAppUrl}/checkout?status=failed&orderId=${globalOrder.id}`);
     }
 
     const syncResult = await verifyAndSyncEasebuzzOrder(txnid);
     if (syncResult.success) {
-      return res.redirect(`${APP_URL}/checkout?status=success&orderId=${globalOrder.id}`);
+      return res.redirect(`${baseAppUrl}/checkout?status=success&orderId=${globalOrder.id}`);
     } else {
-      return res.redirect(`${APP_URL}/checkout?status=failed&orderId=${globalOrder.id}`);
+      return res.redirect(`${baseAppUrl}/checkout?status=failed&orderId=${globalOrder.id}`);
     }
   } catch (err: any) {
     res.status(500).send('Internal server error');

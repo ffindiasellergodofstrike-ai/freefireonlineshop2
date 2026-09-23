@@ -38,7 +38,7 @@ export const CheckoutPage: React.FC = () => {
   const [customerEmail, setCustomerEmail] = useState(currentUser?.email || '');
   const [customerPhone, setCustomerPhone] = useState(currentUser?.mobile || '');
   const [billingCountry, setBillingCountry] = useState('India');
-  const [paymentMethod, setPaymentMethod] = useState<'easebuzz' | 'wallet'>('easebuzz');
+  const [paymentMethod] = useState<'easebuzz'>('easebuzz');
   const [agreeTerms, setAgreeTerms] = useState(true);
 
   // Processing & Completed State
@@ -140,6 +140,7 @@ export const CheckoutPage: React.FC = () => {
     setIsProcessing(true);
 
     try {
+      const sanitizedPhone = (customerPhone || '').replace(/\D/g, '').slice(-10);
       // 1. Create a pending order via backend API
       const pendingOrder = await OrderService.createPendingOrderAsync(
         cartItems,
@@ -147,11 +148,11 @@ export const CheckoutPage: React.FC = () => {
           fullName: customerName,
           email: customerEmail,
           country: billingCountry,
-          phone: customerPhone,
+          phone: sanitizedPhone,
         } as any,
         cartSummary.discount,
         appliedCoupon?.code,
-        paymentMethod === 'easebuzz' ? 'Easebuzz UPI/Cards' : 'Indian Wallets'
+        'Easebuzz UPI/Cards/Netbanking'
       );
 
       // 2. Initiate Easebuzz Payment via backend
@@ -491,34 +492,21 @@ export const CheckoutPage: React.FC = () => {
                 <span>Payment Method</span>
               </h3>
 
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('easebuzz')}
-                  className={`p-4 rounded-2xl border text-center transition-all ${
-                    paymentMethod === 'easebuzz'
-                      ? 'border-blue-600 bg-blue-50/50 text-blue-700 font-bold shadow-xs'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50 font-medium'
-                  }`}
+              <div className="space-y-3">
+                <div
+                  className="p-4 rounded-2xl border border-blue-600 bg-blue-50/50 text-blue-900 shadow-xs flex items-center justify-between"
                 >
-                  <CreditCard className="w-6 h-6 mx-auto mb-2" />
-                  <span className="text-xs block">UPI / Cards / Netbanking</span>
-                  <span className="text-[10px] text-slate-400 font-normal">Instant Authorization</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('wallet')}
-                  className={`p-4 rounded-2xl border text-center transition-all ${
-                    paymentMethod === 'wallet'
-                      ? 'border-blue-600 bg-blue-50/50 text-blue-700 font-bold shadow-xs'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  <Sparkles className="w-6 h-6 mx-auto mb-2 text-purple-600" />
-                  <span className="text-xs block">Wallets</span>
-                  <span className="text-[10px] text-slate-400 font-normal">Paytm, PhonePe, Mobikwik</span>
-                </button>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <CreditCard className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-sm font-bold text-slate-900 block">UPI / Cards / Netbanking (Easebuzz)</span>
+                      <span className="text-xs text-slate-500 font-medium">Instant Authorization & Direct Digital Access</span>
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold text-blue-700 bg-blue-100/80 px-2.5 py-1 rounded-lg">Selected</span>
+                </div>
               </div>
 
               {/* Terms Checkbox */}
