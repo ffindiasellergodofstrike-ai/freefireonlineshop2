@@ -586,30 +586,17 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     const phone = cleanPhone;
 
     const amount = Number(order.total ?? order.amount ?? 0).toFixed(2);
-    const txnid = String(order.orderNumber || order.id || `TXN${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 40);
+    const txnid = `${order.orderNumber || 'ORD'}_${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 35);
     
     const rawFirstname = order.customer?.fullName || order.customerName || 'Customer';
-    const firstname = String(rawFirstname).replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 50) || 'Customer';
+    const firstname = String(rawFirstname).trim().split(' ')[0].replace(/[^a-zA-Z0-9]/g, '') || 'Customer';
     
     const email = String(order.customer?.email || order.customerEmail || req.userEmail || '').trim().toLowerCase();
-    
-    const rawProductInfo = (order.items || []).map((i: any) => i.productTitle).join(' ') || order.productNameSnapshot || 'Digital Products';
-    const productinfo = rawProductInfo.replace(/[^a-zA-Z0-9\s_-]/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 100) || 'Digital Products';
+    const productinfo = 'FFDigital Products';
 
     const baseAppUrl = getHostUrl(req);
     const surl = `${baseAppUrl}/api/payments/easebuzz/callback`;
     const furl = `${baseAppUrl}/api/payments/easebuzz/callback`;
-
-    const udf1 = String(order.id || '').substring(0, 50);
-    const udf2 = '';
-    const udf3 = '';
-    const udf4 = '';
-    const udf5 = '';
-    const udf6 = '';
-    const udf7 = '';
-    const udf8 = '';
-    const udf9 = '';
-    const udf10 = '';
 
     const hashSequence = [
       EASEBUZZ_KEY,
@@ -618,16 +605,16 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
       productinfo,
       firstname,
       email,
-      udf1,
-      udf2,
-      udf3,
-      udf4,
-      udf5,
-      udf6,
-      udf7,
-      udf8,
-      udf9,
-      udf10,
+      '', // udf1
+      '', // udf2
+      '', // udf3
+      '', // udf4
+      '', // udf5
+      '', // udf6
+      '', // udf7
+      '', // udf8
+      '', // udf9
+      '', // udf10
       EASEBUZZ_SALT
     ];
     const hashString = hashSequence.join('|');
@@ -644,16 +631,13 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     formData.append('surl', surl);
     formData.append('furl', furl);
     formData.append('hash', hash);
-    formData.append('udf1', udf1);
-    formData.append('udf2', udf2);
-    formData.append('udf3', udf3);
-    formData.append('udf4', udf4);
-    formData.append('udf5', udf5);
-    formData.append('udf6', udf6);
-    formData.append('udf7', udf7);
-    formData.append('udf8', udf8);
-    formData.append('udf9', udf9);
-    formData.append('udf10', udf10);
+    formData.append('udf1', '');
+    formData.append('udf2', '');
+    formData.append('udf3', '');
+    formData.append('udf4', '');
+    formData.append('udf5', '');
+    formData.append('udf6', '');
+    formData.append('udf7', '');
 
     const ebzResponse = await fetch(`${EASEBUZZ_BASE_URL}/payment/initiateLink`, {
       method: 'POST',
@@ -673,6 +657,7 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     }
 
     if (ebzData && ebzData.status === 1 && ebzData.data) {
+      order.transactionId = txnid;
       order.easebuzzAccessKey = ebzData.data;
       order.status = 'PENDING_PAYMENT';
       order.paymentStatus = 'PENDING';
@@ -682,11 +667,14 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
         accessKey: ebzData.data,
         merchantKey: EASEBUZZ_KEY,
         environment: EASEBUZZ_ENV,
+        orderId: order.id,
+        txnid,
       });
     } else {
       const errorMessage = typeof ebzData?.data === 'string'
         ? ebzData.data
         : (ebzData?.error_desc || ebzData?.message || 'Failed to initiate Easebuzz payment.');
+      console.error('[Easebuzz Gateway Error Response]:', ebzData);
       return res.status(400).json({ success: false, message: errorMessage });
     }
   } catch (err: any) {
