@@ -101,9 +101,9 @@ test('hash field consistency: buildEasebuzzInitiatePayload includes all 10 UDFs 
   assert.equal(payload.get('udf5'), '');
   assert.equal(payload.get('udf6'), '');
   assert.equal(payload.get('udf7'), '');
-  assert.equal(payload.get('udf8'), '');
-  assert.equal(payload.get('udf9'), '');
-  assert.equal(payload.get('udf10'), '');
+  assert.equal(payload.get('udf8'), null); // udf8, udf9, udf10 excluded from POST body
+  assert.equal(payload.get('udf9'), null);
+  assert.equal(payload.get('udf10'), null);
 
   // Verify reverse verification hash
   const callbackHashStr = [

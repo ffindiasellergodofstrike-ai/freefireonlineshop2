@@ -224,9 +224,8 @@ export const buildEasebuzzInitiatePayload = (params: EasebuzzInitiateParams): { 
   payload.append('udf5', udf5);
   payload.append('udf6', udf6);
   payload.append('udf7', udf7);
-  payload.append('udf8', udf8);
-  payload.append('udf9', udf9);
-  payload.append('udf10', udf10);
+  // Note: udf8, udf9, udf10 are included in hash calculation as empty placeholders,
+  // but must NOT be sent in the POST form body per Easebuzz API specifications.
 
   return { payload, hash };
 };
