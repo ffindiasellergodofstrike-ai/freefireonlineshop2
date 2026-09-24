@@ -18,6 +18,8 @@ import {
   Calendar,
   Building,
   Globe,
+  AlertCircle,
+  Clock,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
@@ -580,82 +582,124 @@ export const AccountPage: React.FC = () => {
       )}
 
       {/* Invoice Modal */}
-      {viewingOrder && (
-        <Modal
-          isOpen={!!viewingOrder}
-          onClose={() => setViewingOrder(null)}
-          title={`Order #${viewingOrder.orderNumber}`}
-          maxWidth="md"
-        >
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Payment Status</p>
-                <p className="text-sm font-black text-emerald-900 truncate">COMPLETED & VERIFIED</p>
-              </div>
-              <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-emerald-200 shrink-0 self-start sm:self-center">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <span className="text-[10px] font-black text-emerald-700">PAID IN FULL</span>
-              </div>
-            </div>
+      {viewingOrder && (() => {
+        const isPaid = String(viewingOrder.paymentStatus || '').toUpperCase() === 'PAID';
+        const isFailed =
+          String(viewingOrder.paymentStatus || '').toUpperCase() === 'FAILED' ||
+          String(viewingOrder.status || '').toUpperCase() === 'FAILED';
 
-            <div className="space-y-3">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                Order Items
-              </h4>
-              <div className="divide-y divide-slate-100 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                {viewingOrder.items.map((i: any, idx: number) => (
-                  <div key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group hover:bg-slate-50 transition-colors">
-                    <div className="min-w-0">
-                      <p className="font-black text-slate-900 text-sm truncate">{i.product.title}</p>
-                      <p className="text-[10px] font-bold text-slate-500 mt-0.5 truncate">
-                        Qty: {i.quantity || 1}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => handleSecureDownload(i.productId, `${i.productSlug || 'product'}-v${i.version || '1.0'}.zip`)}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all active:scale-95 flex items-center gap-2"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Download
-                      </button>
-                      <span className="font-mono font-black text-slate-900 shrink-0 text-right text-sm">
-                        ₹{(i.price * i.quantity).toFixed(2)}
-                      </span>
-                    </div>
+        return (
+          <Modal
+            isOpen={!!viewingOrder}
+            onClose={() => setViewingOrder(null)}
+            title={`Order #${viewingOrder.orderNumber}`}
+            maxWidth="md"
+          >
+            <div className="space-y-6">
+              {isPaid ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Payment Status</p>
+                    <p className="text-sm font-black text-emerald-900 truncate">COMPLETED & VERIFIED</p>
                   </div>
-                ))}
-              </div>
-            </div>
+                  <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-emerald-200 shrink-0 self-start sm:self-center">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    <span className="text-[10px] font-black text-emerald-700">PAID IN FULL</span>
+                  </div>
+                </div>
+              ) : isFailed ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-rose-50 border border-rose-100 rounded-2xl">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-rose-600">Payment Status</p>
+                    <p className="text-sm font-black text-rose-900 truncate">PAYMENT FAILED</p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-rose-200 shrink-0 self-start sm:self-center">
+                    <AlertCircle className="w-4 h-4 text-rose-500" />
+                    <span className="text-[10px] font-black text-rose-700">NOT PAID</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Payment Status</p>
+                    <p className="text-sm font-black text-amber-900 truncate">PAYMENT PENDING</p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-amber-200 shrink-0 self-start sm:self-center">
+                    <Clock className="w-4 h-4 text-amber-500" />
+                    <span className="text-[10px] font-black text-amber-700">AWAITING PAYMENT</span>
+                  </div>
+                </div>
+              )}
 
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-              <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
-                <span>Subtotal</span>
-                <span className="font-mono text-slate-900">₹{viewingOrder.total.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
-                <span>Tax (GST)</span>
-                <span className="font-mono text-slate-900">₹0.00</span>
-              </div>
-              <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
-                <span className="text-sm font-black text-slate-900">Total Amount</span>
-                <span className="text-xl font-black text-emerald-600 font-mono">₹{viewingOrder.total.toFixed(2)}</span>
-              </div>
-            </div>
+              {!isPaid && !isFailed && (
+                <div className="p-3.5 bg-amber-50 border border-amber-200/80 rounded-2xl flex items-center gap-3 text-xs text-amber-800">
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span className="font-medium">Download and receipt unlock after Easebuzz confirms this payment.</span>
+                </div>
+              )}
 
-            <button
-              onClick={() => {
-                showToast('success', 'Invoice Saved', 'Digital receipt has been generated.');
-                setViewingOrder(null);
-              }}
-              className="w-full py-4 bg-slate-900 hover:bg-black text-white font-black rounded-2xl text-xs sm:text-sm transition-all shadow-xl active:scale-95 min-h-[44px]"
-            >
-              Print / Save PDF Receipt
-            </button>
-          </div>
-        </Modal>
-      )}
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                  Order Items
+                </h4>
+                <div className="divide-y divide-slate-100 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                  {viewingOrder.items.map((i: any, idx: number) => (
+                    <div key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group hover:bg-slate-50 transition-colors">
+                      <div className="min-w-0">
+                        <p className="font-black text-slate-900 text-sm truncate">{i.product.title}</p>
+                        <p className="text-[10px] font-bold text-slate-500 mt-0.5 truncate">
+                          Qty: {i.quantity || 1}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {isPaid && (
+                          <button
+                            onClick={() => handleSecureDownload(i.productId, `${i.productSlug || 'product'}-v${i.version || '1.0'}.zip`)}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all active:scale-95 flex items-center gap-2"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Download
+                          </button>
+                        )}
+                        <span className="font-mono font-black text-slate-900 shrink-0 text-right text-sm">
+                          ₹{(i.price * i.quantity).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
+                  <span>Subtotal</span>
+                  <span className="font-mono text-slate-900">₹{viewingOrder.total.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
+                  <span>Tax (GST)</span>
+                  <span className="font-mono text-slate-900">₹0.00</span>
+                </div>
+                <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
+                  <span className="text-sm font-black text-slate-900">Total Amount</span>
+                  <span className="text-xl font-black text-emerald-600 font-mono">₹{viewingOrder.total.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {isPaid && (
+                <button
+                  onClick={() => {
+                    showToast('success', 'Invoice Saved', 'Digital receipt has been generated.');
+                    setViewingOrder(null);
+                  }}
+                  className="w-full py-4 bg-slate-900 hover:bg-black text-white font-black rounded-2xl text-xs sm:text-sm transition-all shadow-xl active:scale-95 min-h-[44px]"
+                >
+                  Print / Save PDF Receipt
+                </button>
+              )}
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 };

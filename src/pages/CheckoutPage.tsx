@@ -60,14 +60,19 @@ export const CheckoutPage: React.FC = () => {
 
   // Handle Redirect Back from Easebuzz
   useEffect(() => {
+    let isCancelled = false;
     const status = searchParams.status;
     const orderId = searchParams.orderId;
 
     if (status === 'success' && orderId) {
-      handleSuccessfulPayment(orderId);
+      handleSuccessfulPayment(orderId, () => isCancelled);
     } else if (status === 'failed') {
       showToast('error', 'Payment Failed', 'Your transaction was cancelled or failed. Please try again.');
     }
+
+    return () => {
+      isCancelled = true;
+    };
   }, [searchParams]);
 
   // Sync customer form data when currentUser is loaded
@@ -79,20 +84,24 @@ export const CheckoutPage: React.FC = () => {
     }
   }, [currentUser]);
 
-  const handleSuccessfulPayment = async (orderId: string) => {
+  const handleSuccessfulPayment = async (orderId: string, isCancelled?: () => boolean) => {
     setIsVerifying(true);
-    try {
-      // Poll or wait for webhook to update status
-      let attempts = 0;
-      const maxAttempts = 5;
-      
-      const checkStatus = async () => {
-        const order = await OrderService.fetchOrderById(orderId);
+    setVerificationError(null);
+    const startTime = Date.now();
+    const maxDurationMs = 60000; // 60 seconds
+    const intervalMs = 2000; // 2 seconds between attempts
+
+    const poll = async () => {
+      if (isCancelled && isCancelled()) return;
+
+      try {
+        // 1. Initial check of order status
+        let order = await OrderService.fetchOrderById(orderId);
         if (order && isPaidStatus(order.paymentStatus)) {
+          if (isCancelled && isCancelled()) return;
           setCompletedOrder(order);
           clearCart();
           setIsVerifying(false);
-          
           try {
             confetti({
               particleCount: 120,
@@ -100,30 +109,65 @@ export const CheckoutPage: React.FC = () => {
               origin: { y: 0.6 },
             });
           } catch (err) {}
-          
           showToast('success', 'Payment Verified', 'Your digital product access is now active!');
-          return true;
+          return;
         }
-        return false;
-      };
 
-      const poll = async () => {
-        const done = await checkStatus();
-        if (!done && attempts < maxAttempts) {
-          attempts++;
-          setTimeout(poll, 2000);
-        } else if (!done) {
-          // If still not paid after polling, maybe manual reconcile?
-          setVerificationError('Payment verification is taking longer than expected. Please check your account dashboard in a few minutes or click Reconcile.');
+        // 2. If not PAID, call reconcile endpoint
+        try {
+          await fetch(`/api/payments/easebuzz/reconcile/${encodeURIComponent(orderId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+          });
+        } catch (reconcileErr) {
+          console.warn('Reconciliation ping failed during polling:', reconcileErr);
+        }
+
+        // 3. Fetch order again after reconcile attempt
+        order = await OrderService.fetchOrderById(orderId);
+        if (order && isPaidStatus(order.paymentStatus)) {
+          if (isCancelled && isCancelled()) return;
+          setCompletedOrder(order);
+          clearCart();
+          setIsVerifying(false);
+          try {
+            confetti({
+              particleCount: 120,
+              spread: 80,
+              origin: { y: 0.6 },
+            });
+          } catch (err) {}
+          showToast('success', 'Payment Verified', 'Your digital product access is now active!');
+          return;
+        }
+
+        // 4. Check if 60s timeout reached
+        const elapsed = Date.now() - startTime;
+        if (elapsed < maxDurationMs) {
+          setTimeout(poll, intervalMs);
+        } else {
+          if (isCancelled && isCancelled()) return;
+          setVerificationError(
+            'Payment verification is taking longer than expected. Please check your account dashboard in a few minutes or click Manual Reconcile Now.'
+          );
           setIsVerifying(false);
         }
-      };
+      } catch (err) {
+        const elapsed = Date.now() - startTime;
+        if (elapsed < maxDurationMs) {
+          setTimeout(poll, intervalMs);
+        } else {
+          if (isCancelled && isCancelled()) return;
+          setVerificationError(
+            'Error verifying payment status. Please click Manual Reconcile Now to check status.'
+          );
+          setIsVerifying(false);
+        }
+      }
+    };
 
-      poll();
-    } catch (err) {
-      setVerificationError('Error verifying payment status.');
-      setIsVerifying(false);
-    }
+    poll();
   };
 
   const handleProcessCheckout = async (e: React.FormEvent) => {
@@ -205,17 +249,22 @@ export const CheckoutPage: React.FC = () => {
         credentials: 'include',
       });
       const data = await res.json();
-      if (data.success) {
-        const order = await OrderService.fetchOrderById(orderId);
-        if (order && isPaidStatus(order.paymentStatus)) {
-          setCompletedOrder(order);
-          clearCart();
-          showToast('success', 'Order Reconciled', 'Access granted successfully.');
-        } else {
-          setVerificationError('Payment is not confirmed yet. Please try again in a moment.');
-        }
+      const order = await OrderService.fetchOrderById(orderId);
+      if (order && isPaidStatus(order.paymentStatus)) {
+        setCompletedOrder(order);
+        clearCart();
+        try {
+          confetti({
+            particleCount: 120,
+            spread: 80,
+            origin: { y: 0.6 },
+          });
+        } catch (err) {}
+        showToast('success', 'Order Reconciled', 'Access granted successfully.');
       } else {
-        setVerificationError(data.message || 'Manual reconciliation failed. Please contact support.');
+        setVerificationError(
+          data.message || 'Payment is not confirmed yet. Please try again in a moment or check your bank account.'
+        );
       }
     } catch (err) {
       setVerificationError('Network error during reconciliation.');
@@ -243,37 +292,6 @@ export const CheckoutPage: React.FC = () => {
       showToast('error', 'Download Failed', 'Could not request secure download link.');
     }
   };
-
-  // VERIFYING VIEW (POLLING)
-  if (isVerifying) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-6">
-        <div className="w-20 h-20 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto animate-pulse">
-          <Clock className="w-10 h-10" />
-        </div>
-        <div className="space-y-2">
-          <h1 className="text-2xl font-extrabold text-slate-900">Verifying Your Payment...</h1>
-          <p className="text-slate-600 max-w-sm mx-auto text-sm">
-            Please do not refresh or close this window. We are confirming your transaction with the bank to provision your digital download.
-          </p>
-        </div>
-        {verificationError && (
-          <div className="max-w-md mx-auto p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-xs flex items-start gap-3 text-left">
-            <AlertTriangle className="w-5 h-5 shrink-0" />
-            <div className="space-y-3">
-              <p>{verificationError}</p>
-              <button 
-                onClick={handleReconcile}
-                className="px-4 py-2 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 transition-colors"
-              >
-                Manual Reconcile Now
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   // SUCCESS CONFIRMATION VIEW
   if (completedOrder) {
@@ -367,6 +385,38 @@ export const CheckoutPage: React.FC = () => {
         </div>
       </div>
     </div>
+    );
+  }
+
+  // VERIFYING VIEW (POLLING OR PENDING RETURN FROM EASEBUZZ)
+  const isReturningSuccess = searchParams.status === 'success' && Boolean(searchParams.orderId);
+  if (isReturningSuccess || isVerifying) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-6">
+        <div className="w-20 h-20 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto animate-pulse">
+          <Clock className="w-10 h-10" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-extrabold text-slate-900">Verifying Your Payment...</h1>
+          <p className="text-slate-600 max-w-sm mx-auto text-sm">
+            Please do not refresh or close this window. We are confirming your transaction with the bank to provision your digital download.
+          </p>
+        </div>
+        {verificationError && (
+          <div className="max-w-md mx-auto p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-xs flex items-start gap-3 text-left">
+            <AlertTriangle className="w-5 h-5 shrink-0" />
+            <div className="space-y-3">
+              <p>{verificationError}</p>
+              <button 
+                onClick={handleReconcile}
+                className="px-4 py-2 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 transition-colors"
+              >
+                Manual Reconcile Now
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 
