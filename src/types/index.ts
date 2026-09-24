@@ -138,6 +138,7 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  userId: string;
   orderNumber: string;
   date: string;
   createdAt?: string;
@@ -164,6 +165,7 @@ export interface Order {
   total: number;
   paymentMethod: string;
   transactionId?: string;
+  easebuzzTxnId?: string;
   paymentProvider?: string;
   easebuzzAccessKey?: string;
 }

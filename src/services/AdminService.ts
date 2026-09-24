@@ -63,14 +63,26 @@ export class AdminService {
     return data.success ? data.timeline : [];
   }
 
-  public static async updateOrderStatus(orderId: string, status: string, paymentStatus?: string, deliveryStatus?: string): Promise<any> {
+  public static async revokeOrderAccess(orderId: string): Promise<any> {
     const res = await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ status, paymentStatus, deliveryStatus }),
+      body: JSON.stringify({ deliveryStatus: 'REVOKED' }),
     });
-    return await res.json();
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.message || 'Could not revoke download access.');
+    return data;
+  }
+
+  public static async reconcileOrderPayment(orderId: string): Promise<any> {
+    const res = await fetch(`/api/payments/easebuzz/reconcile/${encodeURIComponent(orderId)}`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.message || 'Payment could not be verified.');
+    return data;
   }
 
   public static async getCustomers(): Promise<any[]> {

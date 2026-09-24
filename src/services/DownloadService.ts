@@ -28,68 +28,19 @@ class DownloadServiceImpl {
     }
 
     try {
-      const downloadId = `dl_${orderId}_${productId}`;
-      const res = await fetch(`/api/user/downloads/${encodeURIComponent(downloadId)}/token`, {
+      const res = await fetch(`/api/downloads/${encodeURIComponent(productId)}/token`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({ orderId }),
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          return {
-            success: true,
-            downloadUrl: data.downloadUrl,
-            token: data.token,
-            message: 'Download authorized successfully.',
-          };
-        }
-      }
-    } catch (err) {
-      console.warn('Backend download token error, using client verification:', err);
+      const data = await res.json();
+      return res.ok && data.success
+        ? { success: true, downloadUrl: data.downloadUrl, token: data.token }
+        : { success: false, message: data.message || 'Download authorization denied.' };
+    } catch {
+      return { success: false, message: 'Could not verify the purchase. Please retry.' };
     }
-
-    // Client-side fallback check
-    const order = OrderService.getOrderById(orderId);
-    if (!order) {
-      return {
-        success: false,
-        message: 'Order not found.',
-      };
-    }
-
-    if (
-      order.customerEmail.toLowerCase() !== user.email.toLowerCase() &&
-      order.customer.email.toLowerCase() !== user.email.toLowerCase()
-    ) {
-      return {
-        success: false,
-        message: 'Access denied: This order does not belong to your account.',
-      };
-    }
-
-    if (order.paymentStatus?.toUpperCase() !== 'PAID') {
-      return {
-        success: false,
-        message: `Order status is ${order.paymentStatus}. Digital access is unavailable until payment is confirmed.`,
-      };
-    }
-
-    const item = order.items.find((i) => i.productId === productId);
-    if (!item) {
-      return {
-        success: false,
-        message: 'Product not found in this order.',
-      };
-    }
-
-    const signature = `token_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`;
-    return {
-      success: true,
-      downloadUrl: item.downloadUrl || `/api/downloads/${item.productId}?signature=${signature}`,
-      token: signature,
-      message: 'Download authorized successfully.',
-    };
   }
 
   /**
@@ -125,7 +76,10 @@ class DownloadServiceImpl {
     const downloads: Array<{ order: Order; item: OrderItem; isAccessible: boolean }> = [];
 
     for (const order of orders) {
-      const isAccessible = order.paymentStatus?.toUpperCase() === 'PAID';
+      const isAccessible = order.paymentStatus?.toUpperCase() === 'PAID' &&
+        order.paymentProvider === 'Easebuzz' && Boolean(order.transactionId) &&
+        !['REFUNDED', 'PARTIALLY_REFUNDED', 'REVOKED', 'CANCELLED', 'FAILED'].includes(String(order.status).toUpperCase()) &&
+        order.deliveryStatus !== 'REVOKED' && order.downloadStatus !== 'REVOKED';
       for (const item of order.items) {
         downloads.push({
           order,

@@ -387,9 +387,14 @@ adminRouter.put('/orders/:id/status', async (req: any, res: Response) => {
       return res.status(404).json({ success: false, message: 'Order not found.' });
     }
 
-    if (status) order.status = status;
-    if (paymentStatus) order.paymentStatus = paymentStatus;
-    if (deliveryStatus) order.deliveryStatus = deliveryStatus;
+    if (status !== undefined || paymentStatus !== undefined || deliveryStatus !== 'REVOKED' ||
+        String(order.paymentStatus).toUpperCase() !== 'PAID') {
+      return res.status(400).json({ success: false, message: 'Only paid-order download access can be revoked here. Payment status must be verified by Easebuzz.' });
+    }
+
+    order.deliveryStatus = 'REVOKED';
+    order.downloadStatus = 'REVOKED';
+    order.items = (order.items || []).map((item: any) => ({ ...item, downloadStatus: 'REVOKED' }));
     order.updatedAt = new Date().toISOString();
 
     await FirebaseRtdb.saveGlobalOrder(order);
@@ -401,12 +406,12 @@ adminRouter.put('/orders/:id/status', async (req: any, res: Response) => {
       eventStatus: 'SUCCESS',
       orderId,
       source: 'ADMIN_PANEL',
-      metadata: { action: 'UPDATE_ORDER_STATUS', status, paymentStatus, deliveryStatus },
+      metadata: { action: 'REVOKE_DOWNLOAD_ACCESS' },
       ip: req.ip,
       userAgent: req.get('user-agent'),
     });
 
-    res.json({ success: true, order, message: 'Order status updated successfully.' });
+    res.json({ success: true, order, message: 'Download access revoked. No refund was initiated.' });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message || 'Failed to update order status.' });
   }
