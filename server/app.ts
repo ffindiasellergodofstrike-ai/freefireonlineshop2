@@ -565,6 +565,10 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     const firstname = sanitizeFieldText(String(rawFirstname).trim().split(' ')[0].replace(/[^a-zA-Z0-9]/g, ''), 50, 'Customer');
     
     const email = String(order.customer?.email || order.customerEmail || req.userEmail || '').trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      return res.status(400).json({ success: false, message: 'A valid customer email is required for payment.' });
+    }
     const productinfo = 'FFDigital Products';
 
     const baseAppUrl = getHostUrl(req);

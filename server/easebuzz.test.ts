@@ -95,12 +95,12 @@ test('hash field consistency: buildEasebuzzInitiatePayload includes all 10 UDFs 
   assert.equal(payload.get('furl'), 'https://www.ffdigital.shop/api/payments/easebuzz/callback');
   assert.equal(payload.get('hash'), hash);
   assert.equal(payload.get('udf1'), 'UDF_VAL_1');
-  assert.equal(payload.get('udf2'), '');
-  assert.equal(payload.get('udf3'), '');
-  assert.equal(payload.get('udf4'), '');
-  assert.equal(payload.get('udf5'), '');
-  assert.equal(payload.get('udf6'), '');
-  assert.equal(payload.get('udf7'), '');
+  assert.equal(payload.get('udf2'), null); // Empty UDFs omitted from POST body
+  assert.equal(payload.get('udf3'), null);
+  assert.equal(payload.get('udf4'), null);
+  assert.equal(payload.get('udf5'), null);
+  assert.equal(payload.get('udf6'), null);
+  assert.equal(payload.get('udf7'), null);
   assert.equal(payload.get('udf8'), null); // udf8, udf9, udf10 excluded from POST body
   assert.equal(payload.get('udf9'), null);
   assert.equal(payload.get('udf10'), null);
@@ -218,6 +218,22 @@ test('missing order ID: validated in initiate request', () => {
   assert.deepEqual(validateInitiateRequest({}), { valid: false, error: 'Order ID is required.' });
   assert.deepEqual(validateInitiateRequest({ orderId: 'ORD-123' }), { valid: false, error: 'You must accept the terms before starting payment.' });
   assert.deepEqual(validateInitiateRequest({ orderId: 'ORD-123', agreeTerms: true }), { valid: true });
+});
+
+test('email validation: required and valid format', () => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const validateEmail = (email?: string) => {
+    const trimmed = (email ?? '').trim().toLowerCase();
+    if (!trimmed || !emailRegex.test(trimmed)) {
+      return { valid: false, error: 'A valid customer email is required for payment.' };
+    }
+    return { valid: true, email: trimmed };
+  };
+
+  assert.deepEqual(validateEmail(''), { valid: false, error: 'A valid customer email is required for payment.' });
+  assert.deepEqual(validateEmail(undefined), { valid: false, error: 'A valid customer email is required for payment.' });
+  assert.deepEqual(validateEmail('invalid-email'), { valid: false, error: 'A valid customer email is required for payment.' });
+  assert.deepEqual(validateEmail('user@test.com'), { valid: true, email: 'user@test.com' });
 });
 
 test('rejected Easebuzz response: safe error reporting without secret exposure', () => {

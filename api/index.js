@@ -3050,6 +3050,10 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
     const rawFirstname = order.customer?.fullName || order.customerName || "Customer";
     const firstname = String(rawFirstname).trim().split(" ")[0].replace(/[^a-zA-Z0-9]/g, "") || "Customer";
     const email = String(order.customer?.email || order.customerEmail || req.userEmail || "").trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      return res.status(400).json({ success: false, message: "A valid customer email is required for payment." });
+    }
     const productinfo = "FFDigital Products";
     const baseAppUrl = getHostUrl(req);
     const surl = `${baseAppUrl}/api/payments/easebuzz/callback`;
@@ -3096,13 +3100,6 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
     formData.append("surl", surl);
     formData.append("furl", furl);
     formData.append("hash", hash);
-    formData.append("udf1", "");
-    formData.append("udf2", "");
-    formData.append("udf3", "");
-    formData.append("udf4", "");
-    formData.append("udf5", "");
-    formData.append("udf6", "");
-    formData.append("udf7", "");
     const ebzResponse = await fetch(`${EASEBUZZ_BASE_URL}/payment/initiateLink`, {
       method: "POST",
       headers: {

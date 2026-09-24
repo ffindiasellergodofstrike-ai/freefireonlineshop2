@@ -217,15 +217,16 @@ export const buildEasebuzzInitiatePayload = (params: EasebuzzInitiateParams): { 
   payload.append('surl', surl);
   payload.append('furl', furl);
   payload.append('hash', hash);
-  payload.append('udf1', udf1);
-  payload.append('udf2', udf2);
-  payload.append('udf3', udf3);
-  payload.append('udf4', udf4);
-  payload.append('udf5', udf5);
-  payload.append('udf6', udf6);
-  payload.append('udf7', udf7);
+  if (udf1) payload.append('udf1', udf1);
+  if (udf2) payload.append('udf2', udf2);
+  if (udf3) payload.append('udf3', udf3);
+  if (udf4) payload.append('udf4', udf4);
+  if (udf5) payload.append('udf5', udf5);
+  if (udf6) payload.append('udf6', udf6);
+  if (udf7) payload.append('udf7', udf7);
   // Note: udf8, udf9, udf10 are included in hash calculation as empty placeholders,
   // but must NOT be sent in the POST form body per Easebuzz API specifications.
+  // Empty UDFs (udf1-udf7) are also omitted from form body to avoid "Parameter validation failed" error.
 
   return { payload, hash };
 };
