@@ -12,6 +12,7 @@ import { PRODUCTS, COUPONS } from '../src/data/products';
 import { adminRouter } from './adminRoutes';
 import { runServerSeed } from './seed';
 import { mergeProductCatalog } from './productCatalog';
+import { easebuzzRetrieveHash, findPaidPurchase, isPaidOrderForProduct, matchesVerifiedEasebuzzPayment } from './paymentAccess';
 import {
   buildEmailDownloadUrl,
   buildInvoiceDownloadUrl,
@@ -25,7 +26,6 @@ import {
 import {
   buildEasebuzzInitiatePayload,
   formatEasebuzzAmount,
-  generateEasebuzzRetrieveHash,
   getEasebuzzBaseUrl,
   sanitizeFieldText,
   sanitizePhoneNumber,
@@ -42,12 +42,23 @@ const EASEBUZZ_ENV: 'prod' | 'test' = rawEasebuzzEnv.startsWith('prod') ? 'prod'
 const CRON_SECRET = process.env.CRON_SECRET || '';
 
 const EASEBUZZ_BASE_URL = getEasebuzzBaseUrl(EASEBUZZ_ENV);
+const EASEBUZZ_DASHBOARD_URL = EASEBUZZ_ENV === 'prod'
+  ? 'https://dashboard.easebuzz.in'
+  : 'https://testdashboard.easebuzz.in';
 
 const getHostUrl = (req: Request): string => {
-  const origin = req.headers.origin;
-  if (typeof origin === 'string' && origin.startsWith('http')) {
-    return origin.replace(/\/+$/, '');
+  if (process.env.APP_URL) {
+    try {
+      const configured = new URL(process.env.APP_URL);
+      if (configured.protocol === 'https:' ||
+          (process.env.NODE_ENV !== 'production' && configured.protocol === 'http:')) {
+        return configured.origin;
+      }
+    } catch {
+      // An invalid configured URL must never become a gateway callback.
+    }
   }
+  if (process.env.NODE_ENV === 'production') return 'https://www.ffdigital.shop';
   const forwardedHost = req.headers['x-forwarded-host'];
   const host = Array.isArray(forwardedHost) ? forwardedHost[0] : (forwardedHost || req.headers.host);
   const proto = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
@@ -403,8 +414,8 @@ const handleOrderCreation = async (req: AuthenticatedRequest, res: Response) => 
         return res.status(400).json({ success: false, message: `Unknown product ID: ${rawId}`, requestId });
       }
 
-      const quantity = parseInt(ci.quantity || 1, 10);
-      if (isNaN(quantity) || quantity < 1 || quantity > 10) {
+      const quantity = ci.quantity === undefined ? 1 : Number(ci.quantity);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) {
         return res.status(400).json({ success: false, message: 'Invalid quantity (must be between 1 and 10).', requestId });
       }
 
@@ -452,8 +463,11 @@ const handleOrderCreation = async (req: AuthenticatedRequest, res: Response) => 
     }
 
     const calculatedTotal = Math.max(0, calculatedSubtotal - calculatedDiscount);
+    if (!Number.isFinite(calculatedTotal) || calculatedTotal <= 0) {
+      return res.status(400).json({ success: false, message: 'Order total must be a positive amount.', requestId });
+    }
     const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const randomHex = crypto.randomBytes(9).toString('hex').toUpperCase();
     const orderId = `LN-${todayStr}-${randomHex}`;
     const now = new Date().toISOString();
 
@@ -543,8 +557,17 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
       return res.status(404).json({ success: false, message: 'Order not found.' });
     }
 
-    if (String(order.paymentStatus).toUpperCase() === 'PAID') {
-      return res.status(400).json({ success: false, message: 'Order is already paid.' });
+    if (String(order.paymentStatus).toUpperCase() === 'PAID' ||
+        ['REFUNDED', 'REVOKED', 'CANCELLED'].includes(String(order.status).toUpperCase()) ||
+        order.deliveryStatus === 'REVOKED') {
+      return res.status(400).json({ success: false, message: 'This order cannot be paid again.' });
+    }
+
+    if (order.easebuzzAccessKey || order.easebuzzTxnId || order.transactionId) {
+      return res.status(409).json({
+        success: false,
+        message: 'Payment was already started for this order. Verify its status before starting a new checkout.',
+      });
     }
 
     const rawPhone = order.customer?.phone || order.customerPhone || '';
@@ -600,6 +623,7 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
 
     const ebzResponse = await fetch(`${EASEBUZZ_BASE_URL}/payment/initiateLink`, {
       method: 'POST',
+      signal: AbortSignal.timeout(10000),
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'
@@ -617,6 +641,7 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
 
     if (ebzData && ebzData.status === 1 && ebzData.data) {
       order.transactionId = txnid;
+      order.easebuzzTxnId = txnid;
       order.easebuzzAccessKey = ebzData.data;
       order.status = 'PENDING_PAYMENT';
       order.paymentStatus = 'PENDING';
@@ -643,23 +668,38 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
   }
 });
 
-const isOrderFulfilled = async (order: any): Promise<boolean> => {
-  if (order.fulfillmentStatus === 'READY') return true;
-  if (!order.userId || !Array.isArray(order.items) || order.items.length === 0) return false;
+const fulfillPaidOrder = async (order: any): Promise<void> => {
+  if (String(order.paymentStatus).toUpperCase() !== 'PAID' || !order.userId ||
+      !Array.isArray(order.items) || !order.items.length ||
+      ['REFUNDED', 'REVOKED', 'CANCELLED'].includes(String(order.status).toUpperCase()) ||
+      order.deliveryStatus === 'REVOKED') return;
 
   const purchases = await FirebaseRtdb.getUserPurchases(order.userId);
-  const hasEveryEntitlement = order.items.every((item: any) => purchases.some((purchase: any) => (
-    purchase.orderId === order.id &&
-    purchase.productId === item.productId &&
-    purchase.accessStatus === 'active'
-  )));
-
-  if (hasEveryEntitlement) {
-    order.fulfillmentStatus = 'READY';
-    order.fulfilledAt = order.fulfilledAt || order.updatedAt || new Date().toISOString();
-    await FirebaseRtdb.saveGlobalOrder(order);
+  const downloads = await FirebaseRtdb.getUserDownloads(order.userId);
+  const now = new Date().toISOString();
+  for (const item of order.items) {
+    const purchaseId = `pur_${order.id}_${item.productId}`;
+    const downloadId = `dl_${order.id}_${item.productId}`;
+    if (!purchases.some((purchase: any) => purchase.purchaseId === purchaseId && purchase.accessStatus === 'active')) {
+      await FirebaseRtdb.savePurchase(order.userId, purchaseId, {
+        purchaseId, userId: order.userId, orderId: order.id,
+        productId: item.productId, productTitle: item.productTitle,
+        purchasedAt: now, accessStatus: 'active', downloadLimit: 10, downloadCount: 0,
+      });
+    }
+    if (!downloads.some((download: any) => download.downloadId === downloadId)) {
+      await FirebaseRtdb.saveUserDownload(order.userId, downloadId, {
+        id: downloadId, downloadId, orderId: order.id,
+        productId: item.productId, productTitle: item.productTitle,
+        status: 'AVAILABLE', createdAt: now,
+        downloadUrl: item.downloadUrl, fileSize: item.fileSize, fileFormat: item.fileFormat,
+      });
+    }
   }
-  return hasEveryEntitlement;
+
+  order.fulfillmentStatus = 'READY';
+  order.fulfilledAt = order.fulfilledAt || now;
+  await FirebaseRtdb.saveGlobalOrder(order);
 };
 
 const createPurchaseEmailLinks = async (order: any): Promise<PurchaseEmailLink[]> => {
@@ -785,11 +825,18 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
     return { success: false, message: 'Order not found' };
   }
 
+  if (['REFUNDED', 'REVOKED', 'CANCELLED'].includes(String(globalOrder.status).toUpperCase()) ||
+      globalOrder.deliveryStatus === 'REVOKED') {
+    return { success: false, status: 'REVOKED', orderId: globalOrder.id, message: 'Order access has been revoked.' };
+  }
+
   if (String(globalOrder.paymentStatus).toUpperCase() === 'PAID') {
+    if (globalOrder.paymentProvider !== 'Easebuzz' || !globalOrder.transactionId) {
+      return { success: false, status: 'PENDING', orderId: globalOrder.id, message: 'Payment must be verified with Easebuzz.' };
+    }
     try {
-      if (await isOrderFulfilled(globalOrder)) {
-        await sendPurchaseEmailSafely(globalOrder);
-      }
+      await fulfillPaidOrder(globalOrder);
+      await sendPurchaseEmailSafely(globalOrder);
     } catch {
       // A retryable email/fulfillment lookup issue must not change a paid order
       // into a failed payment response.
@@ -797,60 +844,48 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
     return { success: true, status: 'PAID', orderId: globalOrder.id, message: 'Already paid' };
   }
 
-  const txnid = String(globalOrder.transactionId || globalOrder.orderNumber || globalOrder.id).replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 40);
-  const amountObj = formatEasebuzzAmount(globalOrder.total || globalOrder.amount);
-  const amount = amountObj.formatted;
-  const email = String(globalOrder.customer?.email || globalOrder.customerEmail || '').trim().toLowerCase();
-  const phone = sanitizePhoneNumber(globalOrder.customer?.phone || globalOrder.customerPhone || '');
-
-  const transHash = generateEasebuzzRetrieveHash({
-    key: EASEBUZZ_KEY,
-    txnid,
-    amount,
-    email,
-    phone,
-    salt: EASEBUZZ_SALT,
-  });
+  // Initiation stores the gateway txnid on the pending order. It can differ
+  // from the customer-facing order number.
+  const txnid = globalOrder.easebuzzTxnId || globalOrder.transactionId || globalOrder.orderNumber || globalOrder.id;
+  const transHash = easebuzzRetrieveHash(EASEBUZZ_KEY, txnid, EASEBUZZ_SALT);
 
   const transFormData = new URLSearchParams();
   transFormData.append('key', EASEBUZZ_KEY);
   transFormData.append('txnid', txnid);
-  transFormData.append('amount', amount);
-  transFormData.append('email', email);
-  transFormData.append('phone', phone);
   transFormData.append('hash', transHash);
 
-  const verifyRes = await fetch(`${EASEBUZZ_BASE_URL}/transaction/v2.1/retrieve`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Accept': 'application/json'
-    },
-    body: transFormData.toString()
-  });
-
-  const verifyData = await verifyRes.json();
-  if (!verifyData.status || !verifyData.data || verifyData.data.status !== 'success') {
-    const errorReason = verifyData.data?.error_Message || verifyData.data?.status || 'Verification failed';
-    globalOrder.status = 'FAILED';
-    globalOrder.paymentStatus = 'FAILED';
-    globalOrder.orderStatus = 'FAILED';
-    globalOrder.failureReason = errorReason;
-    globalOrder.updatedAt = new Date().toISOString();
-    await FirebaseRtdb.saveGlobalOrder(globalOrder);
-    return { success: false, status: 'FAILED', orderId: globalOrder.id, message: errorReason };
+  let verifyRes: globalThis.Response;
+  try {
+    verifyRes = await fetch(`${EASEBUZZ_DASHBOARD_URL}/transaction/v2/retrieve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: transFormData.toString(),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch {
+    return { success: false, status: 'PENDING', orderId: globalOrder.id, message: 'Payment gateway verification is unavailable. Please retry.' };
   }
 
-  const verifiedAmount = Number(verifyData.data.amount).toFixed(2);
-  const expectedAmount = Number(globalOrder.total || globalOrder.amount).toFixed(2);
-  if (verifiedAmount !== expectedAmount) {
-    return { success: false, orderId: globalOrder.id, message: 'Amount mismatch during retrieval' };
+  if (!verifyRes.ok) {
+    return { success: false, status: 'PENDING', orderId: globalOrder.id, message: 'Payment gateway verification is unavailable. Please retry.' };
+  }
+  let verifyData: any;
+  try {
+    verifyData = await verifyRes.json();
+  } catch {
+    return { success: false, status: 'PENDING', orderId: globalOrder.id, message: 'Payment gateway response could not be verified. Please retry.' };
+  }
+  const payment = verifyData?.data;
+  if (Number(verifyData?.status) !== 1 || !matchesVerifiedEasebuzzPayment(payment, globalOrder, EASEBUZZ_KEY)) {
+    return { success: false, status: 'PENDING', orderId: globalOrder.id, message: 'Payment has not been verified for this order.' };
   }
 
-  const easebuzzId = verifyData.data.easepayid || verifyData.data.transaction_id || `EBZ-${Date.now()}`;
+  const easebuzzId = payment.easepayid || payment.transaction_id || txnid;
+  const expectedAmount = Number(globalOrder.total).toFixed(2);
   const now = new Date().toISOString();
-  const userId = globalOrder.userId;
-
   globalOrder.status = 'PAID';
   globalOrder.paymentStatus = 'PAID';
   globalOrder.orderStatus = 'PAID';
@@ -869,35 +904,11 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
   // Save to BOTH global and user orders via saveGlobalOrder
   await FirebaseRtdb.saveGlobalOrder(globalOrder);
 
-  for (const item of globalOrder.items || []) {
-    const purchaseId = `pur_${globalOrder.id}_${item.productId}`;
-    const downloadId = `dl_${globalOrder.id}_${item.productId}`;
-
-    await FirebaseRtdb.savePurchase(userId, purchaseId, {
-      purchaseId, userId, orderId: globalOrder.id,
-      productId: item.productId, productTitle: item.productTitle,
-      purchasedAt: now, accessStatus: 'active',
-      downloadLimit: 10, downloadCount: 0
-    });
-
-    await FirebaseRtdb.saveUserDownload(userId, downloadId, {
-      id: downloadId, downloadId, orderId: globalOrder.id,
-      productId: item.productId, productTitle: item.productTitle,
-      status: 'AVAILABLE', createdAt: now,
-      downloadUrl: item.downloadUrl, fileSize: item.fileSize,
-      fileFormat: item.fileFormat
-    });
-  }
-
-  await FirebaseRtdb.setUserCart(userId, []);
-
-  globalOrder.fulfillmentStatus = 'READY';
-  globalOrder.fulfilledAt = now;
-  await FirebaseRtdb.saveGlobalOrder(globalOrder);
+  await fulfillPaidOrder(globalOrder);
 
   await AuditLogger.log({
     requestId: generateRequestId(),
-    userId,
+    userId: globalOrder.userId,
     orderId: globalOrder.id,
     eventType: 'PAYMENT_VERIFICATION_SUCCESS',
     eventStatus: 'SUCCESS',
@@ -930,6 +941,9 @@ app.post('/api/payments/easebuzz/callback', async (req: Request, res: Response) 
     }
 
     const baseAppUrl = getHostUrl(req);
+    if (String(globalOrder.paymentStatus).toUpperCase() === 'PAID') {
+      return res.redirect(`${baseAppUrl}/checkout?status=success&orderId=${globalOrder.id}`);
+    }
     if (status !== 'success') {
       globalOrder.status = 'FAILED';
       globalOrder.paymentStatus = 'FAILED';
@@ -944,7 +958,7 @@ app.post('/api/payments/easebuzz/callback', async (req: Request, res: Response) 
     if (syncResult.success) {
       return res.redirect(`${baseAppUrl}/checkout?status=success&orderId=${globalOrder.id}`);
     } else {
-      return res.redirect(`${baseAppUrl}/checkout?status=failed&orderId=${globalOrder.id}`);
+      return res.redirect(`${baseAppUrl}/checkout?status=pending&orderId=${globalOrder.id}`);
     }
   } catch (err: any) {
     res.status(500).send('Internal server error');
@@ -1028,8 +1042,8 @@ app.post('/api/downloads/:productId/token', requireAuth, async (req: Authenticat
   try {
     const userId = req.userId!;
     const productId = req.params.productId;
-    const purchases = await FirebaseRtdb.getUserPurchases(userId);
-    const purchase = purchases.find((p: any) => p.productId === productId && p.accessStatus === 'active');
+    const requestedOrderId = typeof req.body?.orderId === 'string' ? req.body.orderId : undefined;
+    const purchase = await findPaidPurchase(userId, productId, undefined, requestedOrderId);
 
     if (!purchase) {
       return res.status(403).json({ success: false, message: 'Active purchase access not found for this product.' });
@@ -1069,8 +1083,8 @@ app.post('/api/downloads/:productId/token', requireAuth, async (req: Authenticat
 app.get('/api/downloads/stream', async (req: Request, res: Response) => {
   try {
     const token = req.query.token as string;
-    if (!token) {
-      return res.status(400).send('Download token is required.');
+    if (typeof token !== 'string' || !/^DL-TOK-[A-Za-z0-9_-]{32}$/.test(token)) {
+      return res.status(400).send('A valid download token is required.');
     }
 
     const tokenData = await FirebaseRtdb.get<any>(`downloadTokens/${token}`);
@@ -1088,12 +1102,7 @@ app.get('/api/downloads/stream', async (req: Request, res: Response) => {
     }
 
     // Re-check the active purchase immediately before opening the protected file.
-    const purchases = await FirebaseRtdb.getUserPurchases(tokenData.userId);
-    const purchase = purchases.find(
-      (p: any) =>
-        (p.purchaseId === tokenData.purchaseId || p.productId === tokenData.productId) &&
-        p.accessStatus === 'active'
-    );
+    const purchase = await findPaidPurchase(tokenData.userId, tokenData.productId, tokenData.purchaseId, tokenData.orderId);
 
     if (!purchase) {
       return res.status(403).send('Active purchase access not found for this download.');
@@ -1151,13 +1160,7 @@ app.get('/api/downloads/email', async (req: Request, res: Response) => {
       return res.status(403).send('Download link has already been used. Sign in to your account to create a new link.');
     }
 
-    const purchases = await FirebaseRtdb.getUserPurchases(tokenData.userId);
-    const purchase = purchases.find((candidate: any) => (
-      candidate.purchaseId === tokenData.purchaseId &&
-      candidate.orderId === tokenData.orderId &&
-      candidate.productId === tokenData.productId &&
-      candidate.accessStatus === 'active'
-    ));
+    const purchase = await findPaidPurchase(tokenData.userId, tokenData.productId, tokenData.purchaseId, tokenData.orderId);
 
     if (!purchase) {
       return res.status(403).send('Active purchase access not found for this download.');
@@ -1217,9 +1220,8 @@ app.get('/api/invoices/email', async (req: Request, res: Response) => {
 
     const order = await FirebaseRtdb.getGlobalOrder(tokenData.orderId);
     if (
-      !order ||
-      order.userId !== tokenData.userId ||
-      String(order.paymentStatus).toUpperCase() !== 'PAID'
+      !order || !Array.isArray(order.items) ||
+      !order.items.some((item: any) => isPaidOrderForProduct(order, tokenData.userId, item.productId))
     ) {
       return res.status(403).send('Paid order not found for this invoice.');
     }

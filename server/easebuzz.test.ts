@@ -192,12 +192,9 @@ test('Easebuzz retrieve transaction hash generation', () => {
   const hash = generateEasebuzzRetrieveHash({
     key: 'KEY123',
     txnid: 'TXN123',
-    amount: '550.00',
-    email: 'user@test.com',
-    phone: '9876543210',
     salt: 'SALT123'
   });
-  const expected = sha512('KEY123|TXN123|550.00|user@test.com|9876543210|SALT123');
+  const expected = sha512('KEY123|TXN123|SALT123');
   assert.equal(hash, expected);
 });
 

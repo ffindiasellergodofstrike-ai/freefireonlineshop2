@@ -25,6 +25,7 @@ import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import { OrderService } from '../services/OrderService';
 import { DownloadService } from '../services/DownloadService';
+import type { Order } from '../types';
 import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
 
@@ -119,9 +120,24 @@ export const AccountPage: React.FC = () => {
     }
   };
 
-  // Orders and Downloads for currently logged in user
-  const orders = OrderService.getUserOrders(currentUser?.email);
-  const downloads = OrderService.getUserDownloads(currentUser?.email);
+  const [orders, setOrders] = useState<Order[]>([]);
+  useEffect(() => {
+    let active = true;
+    setOrders([]);
+    if (currentUser) {
+      void OrderService.fetchUserOrders().then((latestOrders) => {
+        if (active) setOrders(latestOrders);
+      });
+    }
+    return () => { active = false; };
+  }, [currentUser?.id]);
+
+  const downloads = orders
+    .filter((order) => order.paymentStatus?.toUpperCase() === 'PAID' &&
+      order.deliveryStatus !== 'REVOKED' && order.downloadStatus !== 'REVOKED' &&
+      !['REFUNDED', 'PARTIALLY_REFUNDED', 'REVOKED', 'CANCELLED', 'FAILED'].includes(String(order.status).toUpperCase()) &&
+      order.paymentProvider === 'Easebuzz' && Boolean(order.transactionId))
+    .flatMap((order) => order.items.map((item) => ({ ...item, orderId: order.id })));
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();

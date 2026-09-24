@@ -18,6 +18,19 @@ function getRtdbAuth(): string {
   return process.env.FIREBASE_DATABASE_AUTH || process.env.FIREBASE_DATABASE_SECRET || '';
 }
 
+// A serverless instance's in-memory cache is not a durable or shared source of
+// truth for identities, payments or download entitlements.
+function requiresRemoteAuthority(path: string): boolean {
+  return process.env.NODE_ENV === 'production' &&
+    /^(users|indices|sessions|orders|purchases|paymentEvents|downloadTokens|emailDownloadTokens|invoiceDownloadTokens|downloadLogs|orderAuditIndex)(\/|$)/.test(path.replace(/^\/+/, ''));
+}
+
+function assertRemoteAuthority(path: string): void {
+  if (requiresRemoteAuthority(path) && (!process.env.FIREBASE_DATABASE_URL || !getRtdbAuth())) {
+    throw new Error('Authenticated Firebase database access is required for account and payment data.');
+  }
+}
+
 const isDev = process.env.NODE_ENV !== 'production';
 const DATA_DIR = path.join(process.cwd(), '.data');
 const STORE_FILE = path.join(DATA_DIR, 'local_rtdb_store.json');
@@ -124,7 +137,10 @@ export class FirebaseRtdb {
    * Check connection to Firebase Realtime Database
    */
   public static async testConnection(): Promise<{ connected: boolean; url: string; error?: string; mode: string }> {
+    const configuredUrl = process.env.FIREBASE_DATABASE_URL || '(not configured)';
+    const fallbackMode = isDev ? 'LOCAL_DEVELOPMENT_FALLBACK' : 'REMOTE_REQUIRED';
     try {
+      assertRemoteAuthority('orders');
       const url = this.getUrl('health_check');
       const response = await fetch(url, {
         method: 'PUT',
@@ -134,22 +150,21 @@ export class FirebaseRtdb {
       });
 
       if (response.ok) {
-        return { connected: true, url: this.baseUrl, mode: 'DIRECT_REMOTE_SYNC' };
+        return { connected: true, url: configuredUrl, mode: 'DIRECT_REMOTE_SYNC' };
       } else {
-        const text = await response.text();
         return {
           connected: false,
-          url: this.baseUrl,
-          error: `HTTP ${response.status}: ${text}. Active server-side persistent database backup is active so created accounts are safely stored.`,
-          mode: 'HYBRID_PERSISTED_FALLBACK',
+          url: configuredUrl,
+          error: `Firebase connection failed (HTTP ${response.status}).`,
+          mode: fallbackMode,
         };
       }
     } catch (err: any) {
       return {
         connected: false,
-        url: this.baseUrl,
-        error: `${err.message || 'Connection failed'}. Active server-side persistent database backup is active so created accounts are safely stored.`,
-        mode: 'HYBRID_PERSISTED_FALLBACK',
+        url: configuredUrl,
+        error: err.message || 'Firebase connection failed.',
+        mode: fallbackMode,
       };
     }
   }
@@ -158,6 +173,7 @@ export class FirebaseRtdb {
    * Generic GET from RTDB with local store fallback
    */
   public static async get<T>(path: string): Promise<T | null> {
+    assertRemoteAuthority(path);
     try {
       const url = this.getUrl(path);
       const res = await fetch(url, {
@@ -174,8 +190,9 @@ export class FirebaseRtdb {
         }
         return data as T;
       }
+      if (requiresRemoteAuthority(path)) throw new Error(`Firebase read failed (HTTP ${res.status}).`);
     } catch (err) {
-      // Ignore network errors and fall back
+      if (requiresRemoteAuthority(path)) throw err;
     }
 
     // Fallback to persistent local store
@@ -187,11 +204,7 @@ export class FirebaseRtdb {
    * Generic PUT to RTDB with local store backup
    */
   public static async set<T>(path: string, data: T): Promise<T | null> {
-    // 1. Always write to local persistent database store
-    setPathValue(localStore, path, data);
-    saveLocalStore();
-
-    // 2. Attempt remote write to Firebase Realtime Database
+    assertRemoteAuthority(path);
     try {
       const url = this.getUrl(path);
       const res = await fetch(url, {
@@ -202,14 +215,19 @@ export class FirebaseRtdb {
       });
 
       if (!res.ok) {
+        if (requiresRemoteAuthority(path)) throw new Error(`Firebase write failed (HTTP ${res.status}).`);
         const errorText = await res.text();
-        console.warn(`[Firebase RTDB Remote Warning] ${path} returned HTTP ${res.status}: ${errorText}. Account data saved in local persistent store.`);
+        console.warn(`[Firebase RTDB Remote Warning] ${path} returned HTTP ${res.status}: ${errorText}. Local fallback used in development.`);
       } else {
         console.log(`[Firebase RTDB Remote Success] Successfully synced ${path} to Firebase Realtime Database.`);
       }
     } catch (err: any) {
-      console.warn(`[Firebase RTDB Remote Offline] ${path}: ${err?.message}. Account data saved in local persistent store.`);
+      if (requiresRemoteAuthority(path)) throw err;
+      console.warn(`[Firebase RTDB Remote Offline] ${path}: ${err?.message}. Local fallback used in development.`);
     }
+
+    setPathValue(localStore, path, data);
+    saveLocalStore();
 
     return data;
   }
@@ -242,21 +260,21 @@ export class FirebaseRtdb {
    * Generic PATCH to RTDB
    */
   public static async update<T>(path: string, data: Partial<T>): Promise<T | null> {
-    const updated = updatePathValue(localStore, path, data);
-    saveLocalStore();
-
+    assertRemoteAuthority(path);
     try {
       const url = this.getUrl(path);
-      await fetch(url, {
+      const res = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
         signal: AbortSignal.timeout(5000),
       });
+      if (!res.ok && requiresRemoteAuthority(path)) throw new Error(`Firebase update failed (HTTP ${res.status}).`);
     } catch (err) {
-      // Fallback saved locally
+      if (requiresRemoteAuthority(path)) throw err;
     }
-
+    const updated = updatePathValue(localStore, path, data);
+    saveLocalStore();
     return updated as T;
   }
 
@@ -264,17 +282,23 @@ export class FirebaseRtdb {
    * Generic DELETE from RTDB
    */
   public static async delete(path: string): Promise<boolean> {
-    deletePathValue(localStore, path);
-    saveLocalStore();
-
+    assertRemoteAuthority(path);
     try {
       const url = this.getUrl(path);
       const res = await fetch(url, {
         method: 'DELETE',
         signal: AbortSignal.timeout(5000),
       });
+      if (requiresRemoteAuthority(path) && !res.ok) throw new Error(`Firebase delete failed (HTTP ${res.status}).`);
+      if (res.ok || !requiresRemoteAuthority(path)) {
+        deletePathValue(localStore, path);
+        saveLocalStore();
+      }
       return res.ok;
     } catch (err) {
+      if (requiresRemoteAuthority(path)) throw err;
+      deletePathValue(localStore, path);
+      saveLocalStore();
       return true;
     }
   }
@@ -495,9 +519,8 @@ export class FirebaseRtdb {
   }
 
   public static async getUserOrderById(userId: string, orderId: string): Promise<any | null> {
-    const userOrder = await this.get(`users/${userId}/orders/${orderId}`);
-    if (userOrder) return userOrder;
-    return await this.getGlobalOrder(orderId);
+    const globalOrder = await this.getGlobalOrder(orderId);
+    return globalOrder?.userId === userId ? globalOrder : null;
   }
 
   public static async saveUserOrder(userId: string, order: any): Promise<void> {
@@ -506,7 +529,7 @@ export class FirebaseRtdb {
   }
 
   public static async getGlobalOrder(orderIdOrTxnId: string): Promise<any | null> {
-    if (!orderIdOrTxnId) return null;
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(orderIdOrTxnId || '')) return null;
     const direct = await this.get(`orders/${orderIdOrTxnId}`);
     if (direct) return direct;
 
@@ -514,7 +537,8 @@ export class FirebaseRtdb {
     if (allOrdersObj && typeof allOrdersObj === 'object') {
       const allOrders = Object.values(allOrdersObj);
       const matched = allOrders.find((o: any) => 
-        o && (o.id === orderIdOrTxnId || o.transactionId === orderIdOrTxnId || o.orderNumber === orderIdOrTxnId)
+        o && (o.id === orderIdOrTxnId || o.easebuzzTxnId === orderIdOrTxnId ||
+          o.transactionId === orderIdOrTxnId || o.orderNumber === orderIdOrTxnId)
       );
       if (matched) return matched;
     }

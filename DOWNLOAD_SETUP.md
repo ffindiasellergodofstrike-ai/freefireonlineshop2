@@ -20,6 +20,27 @@ The server decrypts and verifies the MEGA file as a ZIP before it consumes the c
 
 Do not commit the paid ZIP or its MEGA/signed storage URL to this public repository.
 
+## Production database and payment access
+
+Set `APP_URL` to the trusted HTTPS domain customers use for checkout. The
+gateway callback must not be derived from a request's `Origin` header. Set
+`FIREBASE_DATABASE_URL` and a private server-side `FIREBASE_DATABASE_AUTH`
+(or `FIREBASE_DATABASE_SECRET`) in the Production environment before enabling
+checkout. Restrict public database writes with Firebase rules. In production,
+sessions, orders, purchases and download tokens require an authenticated remote
+database; if it is unavailable, the server denies access instead of trusting an
+instance's temporary memory. The local fallback is only for development.
+
+Admin **Verify with Easebuzz** reconciles an order against the gateway; it
+cannot mark an unverified order as paid. Admin **Revoke Access** blocks future
+ZIP and invoice downloads, but does **not** send a refund. Refunds must be
+handled separately through the payment provider and reconciled with your
+business records; do not represent a revoked order as refunded.
+An initiated payment keeps its original gateway transaction ID, even when a
+failure callback arrives. Reconcile that order before retrying; starting a
+new checkout creates a separate order rather than overwriting an in-flight
+transaction reference.
+
 ## Future Easebuzz activation
 
 Configure these Vercel Environment Variables when the merchant account is ready:

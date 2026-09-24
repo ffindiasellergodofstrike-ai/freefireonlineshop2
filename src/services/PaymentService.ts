@@ -85,6 +85,6 @@ export class PaymentService {
   }
 
   static async verifyWebhookSignature(_payload: string, _signature: string): Promise<boolean> {
-    return true;
+    return false;
   }
 }

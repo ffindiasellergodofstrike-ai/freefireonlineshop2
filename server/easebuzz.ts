@@ -292,22 +292,16 @@ export const verifyEasebuzzCallbackHash = (params: EasebuzzCallbackParams, salt:
 
 /**
  * Generates hash for Easebuzz transaction retrieval API:
- * sequence: key|txnid|amount|email|phone|salt
+ * sequence: key|txnid|salt
  */
 export const generateEasebuzzRetrieveHash = (params: {
   key: string;
   txnid: string;
-  amount: string;
-  email: string;
-  phone: string;
   salt: string;
 }): string => {
   const sequence = [
     params.key.trim(),
     params.txnid.trim(),
-    params.amount.trim(),
-    params.email.trim(),
-    params.phone.trim(),
     params.salt.trim(),
   ];
   return sha512(sequence.join('|'));

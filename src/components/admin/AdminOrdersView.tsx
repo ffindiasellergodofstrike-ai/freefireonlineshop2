@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Eye, RefreshCw, CheckCircle, RotateCcw, X, Clock, ShieldAlert } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { AdminService } from '../../services/AdminService';
 
 interface AdminOrdersViewProps {
@@ -12,8 +12,6 @@ export const AdminOrdersView: React.FC<AdminOrdersViewProps> = ({ orders, onRefr
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
-  const [refundReason, setRefundReason] = useState('');
-  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
 
   const filtered = orders.filter(o => 
     o.orderNumber?.toLowerCase().includes(search.toLowerCase()) || 
@@ -34,15 +32,26 @@ export const AdminOrdersView: React.FC<AdminOrdersViewProps> = ({ orders, onRefr
     }
   };
 
-  const handleUpdateStatus = async (orderId: string, status: string, paymentStatus?: string) => {
+  const handleVerifyPayment = async (orderId: string) => {
     try {
-      await AdminService.updateOrderStatus(orderId, status, paymentStatus);
+      const result = await AdminService.reconcileOrderPayment(orderId);
       onRefresh();
       if (selectedOrder) {
-        setSelectedOrder({ ...selectedOrder, status, paymentStatus: paymentStatus || selectedOrder.paymentStatus });
+        setSelectedOrder({ ...selectedOrder, paymentStatus: result.status });
       }
-    } catch {
-      alert('Failed to update order status.');
+    } catch (error: any) {
+      alert(error.message || 'Could not verify payment with the gateway.');
+    }
+  };
+
+  const handleRevokeAccess = async (orderId: string) => {
+    if (!window.confirm('Revoke this order’s download access? This does not issue a refund.')) return;
+    try {
+      const result = await AdminService.revokeOrderAccess(orderId);
+      onRefresh();
+      setSelectedOrder(result.order);
+    } catch (error: any) {
+      alert(error.message || 'Could not revoke download access.');
     }
   };
 
@@ -142,16 +151,17 @@ export const AdminOrdersView: React.FC<AdminOrdersViewProps> = ({ orders, onRefr
 
               <div className="flex space-x-2 pt-2">
                 <button
-                  onClick={() => handleUpdateStatus(selectedOrder.id, 'completed', 'PAID')}
+                  onClick={() => handleVerifyPayment(selectedOrder.id)}
                   className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition"
                 >
-                  Mark as Paid & Delivered
+                  Verify with Easebuzz
                 </button>
                 <button
-                  onClick={() => setIsRefundModalOpen(true)}
-                  className="px-4 py-2.5 bg-rose-50 dark:bg-rose-950/50 text-rose-600 hover:bg-rose-100 rounded-xl text-xs font-semibold transition"
+                  onClick={() => handleRevokeAccess(selectedOrder.id)}
+                  disabled={selectedOrder.paymentStatus?.toUpperCase() !== 'PAID' || selectedOrder.deliveryStatus === 'REVOKED'}
+                  className="px-4 py-2.5 bg-rose-50 dark:bg-rose-950/50 text-rose-600 hover:bg-rose-100 rounded-xl text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Refund
+                  Revoke Access
                 </button>
               </div>
 

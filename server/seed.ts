@@ -77,18 +77,6 @@ export async function runServerSeed() {
       });
     }
 
-    // 4. Ensure admin role for ff.india.seller.god.of.strike@gmail.com
-    const adminEmail = 'ff.india.seller.god.of.strike@gmail.com';
-    const adminUserId = await FirebaseRtdb.findUserIdByIdentifier(adminEmail);
-    if (adminUserId) {
-      const profile = await FirebaseRtdb.getUserProfile(adminUserId);
-      if (profile && profile.role !== 'admin') {
-        profile.role = 'admin';
-        await FirebaseRtdb.updateUserProfile(adminUserId, { role: 'admin' });
-        console.log(`Granted admin privileges to ${adminEmail} (${adminUserId})`);
-      }
-    }
-
     console.log('Server seed completed successfully.');
   } catch (err) {
     console.warn('Server seed warning:', err);
