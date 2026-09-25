@@ -28,6 +28,30 @@ declare global {
   }
 }
 
+const EASEBUZZ_CHECKOUT_SCRIPT = 'https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.min.js';
+let easebuzzScriptPromise: Promise<void> | null = null;
+
+const loadEasebuzzCheckout = (): Promise<void> => {
+  if (window.EasebuzzCheckout) return Promise.resolve();
+  if (!easebuzzScriptPromise) {
+    easebuzzScriptPromise = new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = EASEBUZZ_CHECKOUT_SCRIPT;
+      script.async = true;
+      script.onload = () => window.EasebuzzCheckout
+        ? resolve()
+        : reject(new Error('Easebuzz checkout did not load. Please try again.'));
+      script.onerror = () => reject(new Error('Easebuzz checkout could not load. Please check your connection and try again.'));
+      document.body.appendChild(script);
+    }).catch((error) => {
+      document.querySelector(`script[src="${EASEBUZZ_CHECKOUT_SCRIPT}"]`)?.remove();
+      easebuzzScriptPromise = null;
+      throw error;
+    });
+  }
+  return easebuzzScriptPromise;
+};
+
 export const CheckoutPage: React.FC = () => {
   const { cartItems, cartSummary, appliedCoupon, clearCart, currentUser, navigate, searchParams } = useApp();
   const { showToast } = useToast();
@@ -48,13 +72,7 @@ export const CheckoutPage: React.FC = () => {
 
   // Load Easebuzz Script
   useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.min.js';
-    script.async = true;
-    document.body.appendChild(script);
-    return () => {
-      document.body.removeChild(script);
-    };
+    void loadEasebuzzCheckout().catch(() => undefined);
   }, []);
 
   // Handle Redirect Back from Easebuzz
@@ -175,6 +193,9 @@ export const CheckoutPage: React.FC = () => {
     setIsProcessing(true);
 
     try {
+      // A slow checkout script must not leave a newly created order stuck at
+      // the gateway initiation step.
+      await loadEasebuzzCheckout();
       const sanitizedPhone = (customerPhone || '').replace(/\D/g, '').slice(-10);
       // 1. Create a pending order via backend API
       const pendingOrder = await OrderService.createPendingOrderAsync(
@@ -202,12 +223,27 @@ export const CheckoutPage: React.FC = () => {
 
         const options = {
           access_key: initResult.accessKey,
-          onResponse: (response: any) => {
-            // A browser callback is only a hint. The checkout page asks the
-            // server to verify the transaction with Easebuzz before showing paid.
+          onResponse: async (response: any) => {
             const failed = ['failure', 'failed', 'usercancelled', 'cancelled']
               .includes(String(response?.status || '').toLowerCase());
-            window.location.href = `/checkout?status=${failed ? 'failed' : 'pending'}&orderId=${encodeURIComponent(pendingOrder.id)}`;
+            let status = failed ? 'failed' : 'pending';
+            // Easebuzz's popup may include the signed response fields. Let the
+            // server verify and save them immediately when they are present.
+            if (response?.hash && response?.txnid) {
+              try {
+                const result = await fetch('/api/payments/easebuzz/popup-response', {
+                  method: 'POST', credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(response), signal: AbortSignal.timeout(8000),
+                });
+                const verified = await result.json();
+                if (result.ok && verified.status === 'PAID') status = 'success';
+                else if (result.ok && verified.status === 'FAILED') status = 'failed';
+              } catch {
+                // The return page will automatically check Easebuzz by txnid.
+              }
+            }
+            window.location.href = `/checkout?status=${status}&orderId=${encodeURIComponent(pendingOrder.id)}`;
           },
         };
 

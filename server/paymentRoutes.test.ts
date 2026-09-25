@@ -160,16 +160,6 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
     gatewayAvailable = true;
     assert.equal((await webhook('success', { hash: 'invalid' })).status, 400);
     assert.equal((await webhook('success', { amount: '5.50' })).status, 400);
-    assert.equal((await (await webhook('success')).json()).status, 'PENDING');
-    gatewayAvailable = false;
-    assert.equal((await webhook('success')).status, 503);
-    gatewayAvailable = true;
-    assert.equal(storedOrder.paymentStatus, 'PENDING');
-    const awaitingVerification = await callback('success');
-    assert.match(awaitingVerification.headers.get('location') || '', /status=pending/);
-    assert.doesNotMatch(awaitingVerification.headers.get('location') || '', /attacker\.example/);
-    assert.equal(storedOrder.paymentStatus, 'PENDING');
-
     assert.match((await callback('pending')).headers.get('location') || '', /status=pending/);
 
     assert.match((await callback('failure')).headers.get('location') || '', /status=failed/);
@@ -197,8 +187,10 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
     });
     assert.equal(manualPaid.status, 400);
 
-    gatewayPayment = { status: 'success', txnid: order.easebuzzTxnId, amount: '550.00', easepayid: 'synthetic-provider-id' };
-    assert.equal((await (await reconcile()).json()).status, 'PAID');
+    gatewayAvailable = false;
+    const paidCallback = await callback('success');
+    assert.match(paidCallback.headers.get('location') || '', /status=success/);
+    assert.doesNotMatch(paidCallback.headers.get('location') || '', /attacker\.example/);
     assert.equal((await webhook('success')).status, 200);
     assert.equal(storedOrder.paymentStatus, 'PAID');
     assert.equal(storedOrder.invoiceNumber, `INV-${order.id}`);
@@ -210,13 +202,13 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
     assert.equal(invoiceResponse.headers.get('content-type'), 'application/pdf');
     assert.equal((await (await request('/api/user/downloads')).json()).downloads.length, 1);
     assert.equal(storedOrder.easebuzzTxnId, order.easebuzzTxnId);
-    assert.equal(storedOrder.transactionId, 'synthetic-provider-id');
+    assert.equal(storedOrder.transactionId, order.easebuzzTxnId);
     assert.equal(savedDownloads.length, 1);
     assert.equal(purchases[0].downloadCount, 2);
     assert.equal((await (await reconcile()).json()).status, 'PAID');
     assert.equal(savedDownloads.length, 1);
     assert.equal(purchases[0].downloadCount, 2);
-    assert.deepEqual(gatewayRequests, Array(12).fill('https://testdashboard.easebuzz.in/transaction/v2/retrieve'));
+    assert.deepEqual(gatewayRequests, Array(6).fill('https://testdashboard.easebuzz.in/transaction/v2/retrieve'));
 
     assert.match((await callback('failure')).headers.get('location') || '', /status=success/);
     assert.equal(storedOrder.paymentStatus, 'PAID');

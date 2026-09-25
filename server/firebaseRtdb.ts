@@ -5,19 +5,6 @@
 
 import fs from 'fs';
 import path from 'path';
-import { cert, getApps, initializeApp } from 'firebase-admin/app';
-import { getDatabase } from 'firebase-admin/database';
-
-function adminDatabase() {
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
-  if (!serviceAccount) return null;
-  const name = 'ffdigital-rtdb';
-  const app = getApps().find((candidate) => candidate.name === name) || initializeApp({
-    credential: cert(JSON.parse(serviceAccount)),
-    databaseURL: getRtdbBaseUrl(),
-  }, name);
-  return getDatabase(app);
-}
 
 function getRtdbBaseUrl(): string {
   const url = process.env.FIREBASE_DATABASE_URL;
@@ -40,8 +27,7 @@ function requiresRemoteAuthority(_path: string): boolean {
 }
 
 function assertRemoteAuthority(path: string): void {
-  if (requiresRemoteAuthority(path) && (!process.env.FIREBASE_DATABASE_URL ||
-      (!getRtdbAuth() && !process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim()))) {
+  if (requiresRemoteAuthority(path) && (!process.env.FIREBASE_DATABASE_URL || !getRtdbAuth())) {
     throw new Error('Authenticated Firebase database access is required for account and payment data.');
   }
 }
@@ -156,11 +142,6 @@ export class FirebaseRtdb {
     const fallbackMode = isDev ? 'LOCAL_DEVELOPMENT_FALLBACK' : 'REMOTE_REQUIRED';
     try {
       assertRemoteAuthority('orders');
-      const admin = adminDatabase();
-      if (admin) {
-        await admin.ref('health_check').set({ timestamp: new Date().toISOString(), status: 'active' });
-        return { connected: true, url: configuredUrl, mode: 'ADMIN_SDK' };
-      }
       const url = this.getUrl('health_check');
       const response = await fetch(url, {
         method: 'PUT',
@@ -195,15 +176,6 @@ export class FirebaseRtdb {
   public static async get<T>(path: string): Promise<T | null> {
     assertRemoteAuthority(path);
     try {
-      const admin = adminDatabase();
-      if (admin) {
-        const data = (await admin.ref(path).get()).val();
-        if (data !== null) {
-          setPathValue(localStore, path, data);
-          saveLocalStore();
-        }
-        return data as T | null;
-      }
       const url = this.getUrl(path);
       const res = await fetch(url, {
         method: 'GET',
@@ -235,23 +207,18 @@ export class FirebaseRtdb {
   public static async set<T>(path: string, data: T): Promise<T | null> {
     assertRemoteAuthority(path);
     try {
-      const admin = adminDatabase();
-      if (admin) {
-        await admin.ref(path).set(data);
-      } else {
-        const url = this.getUrl(path);
-        const res = await fetch(url, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-          signal: AbortSignal.timeout(5000),
-        });
+      const url = this.getUrl(path);
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        signal: AbortSignal.timeout(5000),
+      });
 
-        if (!res.ok) {
-          if (requiresRemoteAuthority(path)) throw new Error(`Firebase write failed (HTTP ${res.status}).`);
-          const errorText = await res.text();
-          console.warn(`[Firebase RTDB Remote Warning] ${path} returned HTTP ${res.status}: ${errorText}. Local fallback used in development.`);
-        }
+      if (!res.ok) {
+        if (requiresRemoteAuthority(path)) throw new Error(`Firebase write failed (HTTP ${res.status}).`);
+        const errorText = await res.text();
+        console.warn(`[Firebase RTDB Remote Warning] ${path} returned HTTP ${res.status}: ${errorText}. Local fallback used in development.`);
       }
     } catch (err: any) {
       if (requiresRemoteAuthority(path)) throw err;
@@ -269,11 +236,6 @@ export class FirebaseRtdb {
    */
   public static async syncLocalToRemote(): Promise<{ success: boolean; message: string }> {
     try {
-      const admin = adminDatabase();
-      if (admin) {
-        await admin.ref().update(localStore);
-        return { success: true, message: 'Local store successfully synced to Firebase Realtime Database.' };
-      }
       const url = this.getUrl('');
       const res = await fetch(url, {
         method: 'PATCH',
@@ -299,18 +261,14 @@ export class FirebaseRtdb {
   public static async update<T>(path: string, data: Partial<T>): Promise<T | null> {
     assertRemoteAuthority(path);
     try {
-      const admin = adminDatabase();
-      if (admin) await admin.ref(path).update(data);
-      else {
-        const url = this.getUrl(path);
-        const res = await fetch(url, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-          signal: AbortSignal.timeout(5000),
-        });
-        if (!res.ok && requiresRemoteAuthority(path)) throw new Error(`Firebase update failed (HTTP ${res.status}).`);
-      }
+      const url = this.getUrl(path);
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok && requiresRemoteAuthority(path)) throw new Error(`Firebase update failed (HTTP ${res.status}).`);
     } catch (err) {
       if (requiresRemoteAuthority(path)) throw err;
     }
@@ -325,13 +283,6 @@ export class FirebaseRtdb {
   public static async delete(path: string): Promise<boolean> {
     assertRemoteAuthority(path);
     try {
-      const admin = adminDatabase();
-      if (admin) {
-        await admin.ref(path).remove();
-        deletePathValue(localStore, path);
-        saveLocalStore();
-        return true;
-      }
       const url = this.getUrl(path);
       const res = await fetch(url, {
         method: 'DELETE',
@@ -618,17 +569,13 @@ export class FirebaseRtdb {
       throw new Error('Invalid Firebase multi-path update.');
     }
     try {
-      const admin = adminDatabase();
-      if (admin) await admin.ref().update(records);
-      else {
-        const res = await fetch(this.getUrl(''), {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(records),
-          signal: AbortSignal.timeout(5000),
-        });
-        if (!res.ok) throw new Error(`Firebase multi-path write failed (HTTP ${res.status}).`);
-      }
+      const res = await fetch(this.getUrl(''), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(records),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) throw new Error(`Firebase multi-path write failed (HTTP ${res.status}).`);
     } catch (error) {
       if (process.env.NODE_ENV === 'production') throw error;
     }

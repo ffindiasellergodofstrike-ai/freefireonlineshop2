@@ -8,13 +8,11 @@ test('production account, payment and token data cannot fall back to process mem
     url: process.env.FIREBASE_DATABASE_URL,
     auth: process.env.FIREBASE_DATABASE_AUTH,
     secret: process.env.FIREBASE_DATABASE_SECRET,
-    serviceAccount: process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
   };
   context.after(() => {
     for (const [key, value] of Object.entries({
       NODE_ENV: previous.nodeEnv, FIREBASE_DATABASE_URL: previous.url,
       FIREBASE_DATABASE_AUTH: previous.auth, FIREBASE_DATABASE_SECRET: previous.secret,
-      FIREBASE_SERVICE_ACCOUNT_JSON: previous.serviceAccount,
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -25,7 +23,6 @@ test('production account, payment and token data cannot fall back to process mem
   delete process.env.FIREBASE_DATABASE_AUTH;
   delete process.env.FIREBASE_DATABASE_SECRET;
   delete process.env.FIREBASE_DATABASE_URL;
-  delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   await assert.rejects(FirebaseRtdb.get('orders/synthetic-1'), /Authenticated Firebase/);
   await assert.rejects(FirebaseRtdb.set('sessions/synthetic-1', { userId: 'buyer' }), /Authenticated Firebase/);
   await assert.rejects(FirebaseRtdb.update('purchases/synthetic-1', { accessStatus: 'active' }), /Authenticated Firebase/);
@@ -44,8 +41,6 @@ test('production account, payment and token data cannot fall back to process mem
   await assert.rejects(FirebaseRtdb.delete('sessions/synthetic-1'), /Firebase delete failed/);
   await assert.rejects(FirebaseRtdb.saveGlobalOrder({ id: 'synthetic-1', userId: 'buyer' }), /Firebase multi-path write failed/);
 
-  process.env.FIREBASE_SERVICE_ACCOUNT_JSON = 'invalid-json';
-  await assert.rejects(FirebaseRtdb.get('orders/synthetic-1'), SyntaxError);
 });
 
 test('order and purchase mirrors use one atomic Firebase multi-path request', async (context) => {
@@ -53,12 +48,10 @@ test('order and purchase mirrors use one atomic Firebase multi-path request', as
     nodeEnv: process.env.NODE_ENV,
     url: process.env.FIREBASE_DATABASE_URL,
     auth: process.env.FIREBASE_DATABASE_AUTH,
-    serviceAccount: process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
   };
   context.after(() => {
     for (const [key, value] of Object.entries({ NODE_ENV: previous.nodeEnv,
-      FIREBASE_DATABASE_URL: previous.url, FIREBASE_DATABASE_AUTH: previous.auth,
-      FIREBASE_SERVICE_ACCOUNT_JSON: previous.serviceAccount })) {
+      FIREBASE_DATABASE_URL: previous.url, FIREBASE_DATABASE_AUTH: previous.auth })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
@@ -66,7 +59,6 @@ test('order and purchase mirrors use one atomic Firebase multi-path request', as
   process.env.NODE_ENV = 'production';
   process.env.FIREBASE_DATABASE_URL = 'https://example.test';
   process.env.FIREBASE_DATABASE_AUTH = 'synthetic-credential';
-  delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   const writes: any[] = [];
   context.mock.method(globalThis, 'fetch', async (_url: any, init: any) => {
     writes.push({ method: init.method, body: JSON.parse(init.body) });

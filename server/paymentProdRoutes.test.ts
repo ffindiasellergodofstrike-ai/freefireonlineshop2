@@ -7,10 +7,11 @@ import { AuthServiceServer } from './auth';
 import { FirebaseRtdb } from './firebaseRtdb';
 import { AuditLogger } from './audit';
 
-test('production reconciliation and signed webhook independently verify and deliver orders', async (context) => {
+test('production initiation preserves the legacy payload and signed notifications deliver without dashboard lookup', async (context) => {
   process.env.EASEBUZZ_KEY = 'synthetic-prod-merchant';
   process.env.EASEBUZZ_SALT = 'synthetic-prod-salt';
   process.env.EASEBUZZ_ENV = 'prod';
+  process.env.APP_URL = 'https://store.example.test';
   process.env.RESEND_API_KEY = 're_synthetic';
   process.env.RESEND_FROM_EMAIL = 'FFDigital <orders@example.test>';
 
@@ -26,12 +27,14 @@ test('production reconciliation and signed webhook independently verify and deli
     ['prod-manual-1', makeOrder('prod-manual-1')],
     ['prod-webhook-1', makeOrder('prod-webhook-1')],
     ['prod-callback-1', makeOrder('prod-callback-1')],
+    ['prod-popup-1', makeOrder('prod-popup-1')],
     ['prod-initiate-1', { ...makeOrder('prod-initiate-1'), easebuzzTxnId: undefined, transactionId: undefined,
       checkoutStartedAt: '2026-09-25T00:00:00.000Z', requestId: 'synthetic-request-1' }],
   ]);
   const purchases: any[] = [];
   const downloads: any[] = [];
   const gatewayRequests: string[] = [];
+  let gatewayAvailable = true;
   const sentEmails: any[] = [];
   let initiationForm: URLSearchParams | undefined;
   const originalFetch = globalThis.fetch;
@@ -69,6 +72,7 @@ test('production reconciliation and signed webhook independently verify and deli
       }
       if (url === 'https://dashboard.easebuzz.in/transaction/v2/retrieve') {
         gatewayRequests.push(url);
+        if (!gatewayAvailable) throw new Error('Synthetic dashboard outage');
         const form = new URLSearchParams(init?.body);
         const txnid = form.get('txnid');
         assert.ok(txnid && orders.has(txnid));
@@ -93,19 +97,12 @@ test('production reconciliation and signed webhook independently verify and deli
     });
     assert.equal((await initiate(false)).status, 400);
     assert.equal((await initiate(true)).status, 200);
-    assert.equal(initiationForm?.get('firstname'), 'Demo Buyer');
+    assert.equal(initiationForm?.get('firstname'), 'Demo');
     assert.equal(initiationForm?.get('phone'), '9876543210');
-    assert.equal(initiationForm?.get('productinfo'), 'Demo');
-    assert.equal(initiationForm?.get('udf1'), 'prod-initiate-1');
-    assert.equal(initiationForm?.get('udf2'), 'India');
-    assert.equal(initiationForm?.get('udf4'), '127.0.0.1');
-    assert.equal(initiationForm?.get('udf6'), 'demo');
-    assert.equal(initiationForm?.get('udf7'), 'terms-refund-privacy:accepted');
-    assert.match(initiationForm?.get('udf3') || '', /^\d{4}-\d\d-\d\dT/);
-    assert.equal(initiationForm?.get('udf5'), initiationForm?.get('udf3'));
-    assert.equal(initiationForm?.get('udf8'), null);
-    assert.equal(initiationForm?.get('udf9'), null);
-    assert.equal(initiationForm?.get('udf10'), null);
+    assert.equal(initiationForm?.get('productinfo'), 'FFDigital Products');
+    assert.equal(initiationForm?.get('surl'), 'https://store.example.test/api/payments/easebuzz/callback');
+    assert.equal(initiationForm?.get('furl'), 'https://store.example.test/api/payments/easebuzz/callback');
+    for (let field = 1; field <= 10; field++) assert.equal(initiationForm?.get(`udf${field}`), null);
     const hashFields = ['key', 'txnid', 'amount', 'productinfo', 'firstname', 'email',
       ...Array.from({ length: 10 }, (_, i) => `udf${i + 1}`)];
     assert.equal(initiationForm?.get('hash'), crypto.createHash('sha512').update([
@@ -114,6 +111,8 @@ test('production reconciliation and signed webhook independently verify and deli
     assert.equal(orders.get('prod-initiate-1').termsAccepted, true);
     assert.equal(orders.get('prod-initiate-1').paymentInitiationIp, '127.0.0.1');
     assert.equal(orders.get('prod-initiate-1').customer.country, 'India');
+    assert.equal(orders.get('prod-initiate-1').customer.fullName, 'Demo Buyer');
+    assert.equal(orders.get('prod-initiate-1').items[0].productTitle, 'Demo');
     assert.equal(orders.get('prod-initiate-1').checkoutStartedAt, '2026-09-25T00:00:00.000Z');
     assert.equal(orders.get('prod-initiate-1').requestId, 'synthetic-request-1');
 
@@ -124,6 +123,7 @@ test('production reconciliation and signed webhook independently verify and deli
     assert.equal((await manual.json()).status, 'PAID');
     assert.equal(orders.get('prod-manual-1').deliveryStatus, 'DELIVERED');
     assert.equal(orders.get('prod-manual-1').emailDelivery.status, 'sent');
+    gatewayAvailable = false;
 
     const fields = {
       status: 'success', email: 'buyer@example.test', firstname: 'Buyer',
@@ -148,7 +148,7 @@ test('production reconciliation and signed webhook independently verify and deli
     assert.equal(downloads.length, 2);
     assert.equal(sentEmails.length, 2);
     assert.equal((await notify()).status, 200);
-    assert.equal(gatewayRequests.length, 2);
+    assert.equal(gatewayRequests.length, 1);
     assert.equal(purchases.length, 2);
     assert.equal(downloads.length, 2);
     assert.equal(sentEmails.length, 2);
@@ -170,7 +170,23 @@ test('production reconciliation and signed webhook independently verify and deli
     assert.equal(sentEmails.length, 3);
     assert.equal(sentEmails[2].to, 'buyer@example.test');
     assert.equal(sentEmails[2].attachments[0].filename, 'invoice-prod-callback-1.pdf');
-    assert.equal(gatewayRequests.length, 3);
+    assert.equal(gatewayRequests.length, 1);
+
+    const popupFields = { ...fields, txnid: 'prod-popup-1' };
+    const popupHash = crypto.createHash('sha512').update([
+      'synthetic-prod-salt', popupFields.status, ...Array(10).fill(''), popupFields.email,
+      popupFields.firstname, popupFields.productinfo, popupFields.amount,
+      popupFields.txnid, popupFields.key,
+    ].join('|')).digest('hex');
+    const popup = await originalFetch(`${base}/api/payments/easebuzz/popup-response`, {
+      method: 'POST', headers: { Cookie: 'sid=buyer', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...popupFields, hash: popupHash }),
+    });
+    assert.equal(popup.status, 200);
+    assert.equal((await popup.json()).status, 'PAID');
+    assert.equal(orders.get('prod-popup-1').deliveryStatus, 'DELIVERED');
+    assert.equal(sentEmails.length, 4);
+    assert.equal(gatewayRequests.length, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
