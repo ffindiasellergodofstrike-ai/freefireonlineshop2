@@ -19,14 +19,24 @@ export const Footer: React.FC = () => {
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email && email.includes('@')) {
-      setSubscribed(true);
-      showToast('success', 'Subscribed!', 'You will receive product updates and release notes.');
-      setEmail('');
-    } else {
+    if (!email || !email.includes('@')) {
       showToast('error', 'Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
+    try {
+      const response = await fetch('/api/newsletter/subscribe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || 'Could not save your subscription.');
+      setSubscribed(true);
+      showToast('success', 'Subscribed!', 'Your subscription was saved.');
+      setEmail('');
+    } catch {
+      showToast('error', 'Subscription Failed', 'Could not save your subscription. Please retry.');
     }
   };
 
@@ -130,7 +140,7 @@ export const Footer: React.FC = () => {
               {subscribed ? (
                 <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-800/50 p-3 rounded-xl">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Thank you for subscribing! Check your inbox for updates.</span>
+                  <span>Thank you! Your subscription was saved.</span>
                 </div>
               ) : (
                 <form onSubmit={handleSubscribe} className="flex items-center gap-2 max-w-md">

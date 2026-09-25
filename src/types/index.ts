@@ -151,6 +151,7 @@ export interface Order {
   customer: {
     fullName: string;
     email: string;
+    phone?: string;
     company?: string;
     country: string;
   };
@@ -168,6 +169,25 @@ export interface Order {
   easebuzzTxnId?: string;
   paymentProvider?: string;
   easebuzzAccessKey?: string;
+  invoiceNumber?: string;
+  paymentVerifiedAt?: string;
+  paymentInitiatedAt?: string;
+  paymentInitiationIp?: string | null;
+  termsAccepted?: boolean;
+  termsAcceptedAt?: string;
+  termsAcceptedPolicies?: string[];
+  termsDocumentUrl?: string;
+  easebuzzProductInfo?: string;
+  fulfilledAt?: string;
+  deliveredAt?: string;
+  emailDelivery?: {
+    status: 'sent' | 'failed' | 'not_configured';
+    attempts: number;
+    lastAttemptAt: string;
+    sentAt?: string;
+    emailId?: string;
+    message?: string;
+  };
 }
 
 export interface Coupon {

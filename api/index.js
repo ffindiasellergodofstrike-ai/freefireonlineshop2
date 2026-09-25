@@ -1,9 +1,11 @@
 // server/app.ts
 import express from "express";
 import crypto5 from "crypto";
+import { isIP } from "node:net";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import cors from "cors";
+import { z as z2 } from "zod";
 
 // server/auth.ts
 import bcrypt from "bcryptjs";
@@ -11,6 +13,18 @@ import bcrypt from "bcryptjs";
 // server/firebaseRtdb.ts
 import fs from "fs";
 import path from "path";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getDatabase } from "firebase-admin/database";
+function adminDatabase() {
+  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
+  if (!serviceAccount) return null;
+  const name = "ffdigital-rtdb";
+  const app2 = getApps().find((candidate) => candidate.name === name) || initializeApp({
+    credential: cert(JSON.parse(serviceAccount)),
+    databaseURL: getRtdbBaseUrl()
+  }, name);
+  return getDatabase(app2);
+}
 function getRtdbBaseUrl() {
   const url = process.env.FIREBASE_DATABASE_URL;
   if (!url) {
@@ -21,11 +35,11 @@ function getRtdbBaseUrl() {
 function getRtdbAuth() {
   return process.env.FIREBASE_DATABASE_AUTH || process.env.FIREBASE_DATABASE_SECRET || "";
 }
-function requiresRemoteAuthority(path2) {
-  return process.env.NODE_ENV === "production" && /^(users|indices|sessions|orders|purchases|paymentEvents|downloadTokens|emailDownloadTokens|invoiceDownloadTokens|downloadLogs|orderAuditIndex)(\/|$)/.test(path2.replace(/^\/+/, ""));
+function requiresRemoteAuthority(_path) {
+  return process.env.NODE_ENV === "production";
 }
 function assertRemoteAuthority(path2) {
-  if (requiresRemoteAuthority(path2) && (!process.env.FIREBASE_DATABASE_URL || !getRtdbAuth())) {
+  if (requiresRemoteAuthority(path2) && (!process.env.FIREBASE_DATABASE_URL || !getRtdbAuth() && !process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim())) {
     throw new Error("Authenticated Firebase database access is required for account and payment data.");
   }
 }
@@ -123,6 +137,11 @@ var FirebaseRtdb = class {
     const fallbackMode = isDev ? "LOCAL_DEVELOPMENT_FALLBACK" : "REMOTE_REQUIRED";
     try {
       assertRemoteAuthority("orders");
+      const admin = adminDatabase();
+      if (admin) {
+        await admin.ref("health_check").set({ timestamp: (/* @__PURE__ */ new Date()).toISOString(), status: "active" });
+        return { connected: true, url: configuredUrl, mode: "ADMIN_SDK" };
+      }
       const url = this.getUrl("health_check");
       const response = await fetch(url, {
         method: "PUT",
@@ -155,6 +174,15 @@ var FirebaseRtdb = class {
   static async get(path2) {
     assertRemoteAuthority(path2);
     try {
+      const admin = adminDatabase();
+      if (admin) {
+        const data = (await admin.ref(path2).get()).val();
+        if (data !== null) {
+          setPathValue(localStore, path2, data);
+          saveLocalStore();
+        }
+        return data;
+      }
       const url = this.getUrl(path2);
       const res = await fetch(url, {
         method: "GET",
@@ -182,19 +210,22 @@ var FirebaseRtdb = class {
   static async set(path2, data) {
     assertRemoteAuthority(path2);
     try {
-      const url = this.getUrl(path2);
-      const res = await fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        signal: AbortSignal.timeout(5e3)
-      });
-      if (!res.ok) {
-        if (requiresRemoteAuthority(path2)) throw new Error(`Firebase write failed (HTTP ${res.status}).`);
-        const errorText = await res.text();
-        console.warn(`[Firebase RTDB Remote Warning] ${path2} returned HTTP ${res.status}: ${errorText}. Local fallback used in development.`);
+      const admin = adminDatabase();
+      if (admin) {
+        await admin.ref(path2).set(data);
       } else {
-        console.log(`[Firebase RTDB Remote Success] Successfully synced ${path2} to Firebase Realtime Database.`);
+        const url = this.getUrl(path2);
+        const res = await fetch(url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+          signal: AbortSignal.timeout(5e3)
+        });
+        if (!res.ok) {
+          if (requiresRemoteAuthority(path2)) throw new Error(`Firebase write failed (HTTP ${res.status}).`);
+          const errorText = await res.text();
+          console.warn(`[Firebase RTDB Remote Warning] ${path2} returned HTTP ${res.status}: ${errorText}. Local fallback used in development.`);
+        }
       }
     } catch (err) {
       if (requiresRemoteAuthority(path2)) throw err;
@@ -209,6 +240,11 @@ var FirebaseRtdb = class {
    */
   static async syncLocalToRemote() {
     try {
+      const admin = adminDatabase();
+      if (admin) {
+        await admin.ref().update(localStore);
+        return { success: true, message: "Local store successfully synced to Firebase Realtime Database." };
+      }
       const url = this.getUrl("");
       const res = await fetch(url, {
         method: "PATCH",
@@ -232,14 +268,18 @@ var FirebaseRtdb = class {
   static async update(path2, data) {
     assertRemoteAuthority(path2);
     try {
-      const url = this.getUrl(path2);
-      const res = await fetch(url, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        signal: AbortSignal.timeout(5e3)
-      });
-      if (!res.ok && requiresRemoteAuthority(path2)) throw new Error(`Firebase update failed (HTTP ${res.status}).`);
+      const admin = adminDatabase();
+      if (admin) await admin.ref(path2).update(data);
+      else {
+        const url = this.getUrl(path2);
+        const res = await fetch(url, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+          signal: AbortSignal.timeout(5e3)
+        });
+        if (!res.ok && requiresRemoteAuthority(path2)) throw new Error(`Firebase update failed (HTTP ${res.status}).`);
+      }
     } catch (err) {
       if (requiresRemoteAuthority(path2)) throw err;
     }
@@ -253,6 +293,13 @@ var FirebaseRtdb = class {
   static async delete(path2) {
     assertRemoteAuthority(path2);
     try {
+      const admin = adminDatabase();
+      if (admin) {
+        await admin.ref(path2).remove();
+        deletePathValue(localStore, path2);
+        saveLocalStore();
+        return true;
+      }
       const url = this.getUrl(path2);
       const res = await fetch(url, {
         method: "DELETE",
@@ -432,13 +479,17 @@ var FirebaseRtdb = class {
     return globalOrder?.userId === userId ? globalOrder : null;
   }
   static async saveUserOrder(userId, order) {
-    await this.set(`users/${userId}/orders/${order.id}`, order);
-    await this.set(`orders/${order.id}`, order);
+    await this.setMultiple({ [`users/${userId}/orders/${order.id}`]: order, [`orders/${order.id}`]: order });
   }
   static async getGlobalOrder(orderIdOrTxnId) {
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(orderIdOrTxnId || "")) return null;
     const direct = await this.get(`orders/${orderIdOrTxnId}`);
     if (direct) return direct;
+    const indexedOrderId = await this.get(`paymentTxnIndex/${orderIdOrTxnId}`);
+    if (indexedOrderId && /^[A-Za-z0-9_-]{1,100}$/.test(indexedOrderId)) {
+      const indexedOrder = await this.get(`orders/${indexedOrderId}`);
+      if (indexedOrder?.easebuzzTxnId === orderIdOrTxnId) return indexedOrder;
+    }
     const allOrdersObj = await this.get("orders");
     if (allOrdersObj && typeof allOrdersObj === "object") {
       const allOrders = Object.values(allOrdersObj);
@@ -450,10 +501,37 @@ var FirebaseRtdb = class {
     return null;
   }
   static async saveGlobalOrder(order) {
-    await this.set(`orders/${order.id || order.orderId}`, order);
-    if (order.userId) {
-      await this.set(`users/${order.userId}/orders/${order.id || order.orderId}`, order);
+    const orderId = order.id || order.orderId;
+    await this.setMultiple({
+      [`orders/${orderId}`]: order,
+      ...order.userId ? { [`users/${order.userId}/orders/${orderId}`]: order } : {},
+      ...order.easebuzzTxnId && /^[A-Za-z0-9_-]{1,100}$/.test(order.easebuzzTxnId) ? { [`paymentTxnIndex/${order.easebuzzTxnId}`]: orderId } : {}
+    });
+  }
+  /** Atomically update mirrored records with one Firebase root PATCH. */
+  static async setMultiple(records) {
+    assertRemoteAuthority("orders");
+    const entries = Object.entries(records);
+    if (!entries.length || entries.some(([key]) => !key || key.startsWith("/") || key.endsWith("/") || key.includes(".."))) {
+      throw new Error("Invalid Firebase multi-path update.");
     }
+    try {
+      const admin = adminDatabase();
+      if (admin) await admin.ref().update(records);
+      else {
+        const res = await fetch(this.getUrl(""), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(records),
+          signal: AbortSignal.timeout(5e3)
+        });
+        if (!res.ok) throw new Error(`Firebase multi-path write failed (HTTP ${res.status}).`);
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") throw error;
+    }
+    for (const [key, value] of entries) setPathValue(localStore, key, value);
+    saveLocalStore();
   }
   /**
    * Global Purchase Access Records
@@ -468,8 +546,10 @@ var FirebaseRtdb = class {
     return Array.isArray(data) ? data : Object.values(data);
   }
   static async savePurchase(userId, purchaseId, purchaseData) {
-    await this.set(`purchases/${purchaseId}`, purchaseData);
-    await this.set(`users/${userId}/purchases/${purchaseId}`, purchaseData);
+    await this.setMultiple({
+      [`purchases/${purchaseId}`]: purchaseData,
+      [`users/${userId}/purchases/${purchaseId}`]: purchaseData
+    });
   }
   /**
    * Payment Events (Webhook Idempotency)
@@ -645,6 +725,8 @@ var AuthServiceServer = class {
       }
       return null;
     }
+    const profile = await FirebaseRtdb.getUserProfile(session.userId);
+    if (!profile || profile.sessionValidAfter && new Date(session.createdAt).getTime() < Number(profile.sessionValidAfter)) return null;
     return {
       userId: session.userId,
       email: session.email,
@@ -762,18 +844,15 @@ var AuthServiceServer = class {
       user: profile
     };
   }
-  /**
-   * Forgot Password Reset Flow
-   */
   static async resetPasswordWithEmailAndMobile(data) {
     const genericError = "The email and mobile number could not be verified.";
     const { email, mobile, newPassword, confirmNewPassword } = data;
     if (!email || !mobile || !newPassword) {
       return { success: false, message: genericError };
     }
-    const cleanMobile = mobile.toString().trim().replace(/\D/g, "").slice(0, 10);
-    const cleanEmail = email.trim().toLowerCase();
-    if (cleanMobile.length !== 10) {
+    const cleanMobile = String(mobile).trim().replace(/\D/g, "");
+    const cleanEmail = String(email).trim().toLowerCase();
+    if (!/^[6-9][0-9]{9}$/.test(cleanMobile) || !cleanEmail.includes("@")) {
       return { success: false, message: genericError };
     }
     if (newPassword.length < 6) {
@@ -787,7 +866,7 @@ var AuthServiceServer = class {
       return { success: false, message: genericError };
     }
     const profile = await FirebaseRtdb.getUserProfile(userId);
-    if (!profile || !profile.mobile) {
+    if (!profile || !profile.mobile || String(profile.email || "").trim().toLowerCase() !== cleanEmail) {
       return { success: false, message: genericError };
     }
     if (profile.mobile.replace(/\D/g, "") !== cleanMobile) {
@@ -795,6 +874,7 @@ var AuthServiceServer = class {
     }
     const newPasswordHash = await this.hashPassword(newPassword);
     await FirebaseRtdb.updatePasswordHash(userId, newPasswordHash);
+    await FirebaseRtdb.updateUserProfile(userId, { sessionValidAfter: Date.now() });
     return {
       success: true,
       message: "Password reset successfully. You can now log in with your new password."
@@ -1804,6 +1884,11 @@ function isAllowedProductPreviewUrl(value) {
 
 // server/adminRoutes.ts
 var adminRouter = Router();
+function safeCsvCell(value) {
+  const text = String(value ?? "").replace(/\r\n|\r/g, "\n");
+  const safe = /^[\s]*[=+\-@]/.test(text) ? `'${text}` : text;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
 var upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -1869,7 +1954,7 @@ adminRouter.get("/me", async (req, res) => {
       admin: profile,
       health: {
         firebase: firebaseStatus,
-        easebuzz: { status: "active", environment: process.env.EASEBUZZ_ENV || "test" }
+        easebuzz: { status: process.env.EASEBUZZ_KEY && process.env.EASEBUZZ_SALT ? "configured" : "not_configured", environment: process.env.EASEBUZZ_ENV || "unset" }
       }
     });
   } catch (err) {
@@ -1893,15 +1978,26 @@ adminRouter.get("/dashboard/stats", async (req, res) => {
     let paidCount = 0;
     let pendingCount = 0;
     let failedCount = 0;
+    const dailyRevenue = Array.from({ length: 30 }, (_, index) => {
+      const day = new Date(now - (29 - index) * oneDay).toISOString().slice(0, 10);
+      return { name: day, revenue: 0 };
+    });
+    const revenueByDay = new Map(dailyRevenue.map((day) => [day.name, day]));
     orders.forEach((o) => {
-      const amount = o.total || 0;
-      const orderTime = new Date(o.date || o.createdAt || 0).getTime();
+      const amount = Number(o.total) || 0;
+      const paidDate = o.paymentVerifiedAt || o.paidAt || o.createdAt || o.date;
+      const orderTime = new Date(paidDate || 0).getTime();
       const isPaid = String(o.paymentStatus).toUpperCase() === "PAID";
       if (isPaid) {
         totalRevenue += amount;
-        if (now - orderTime <= oneDay) revenueToday += amount;
-        if (now - orderTime <= sevenDays) revenue7d += amount;
-        if (now - orderTime <= thirtyDays) revenue30d += amount;
+        if (Number.isFinite(orderTime)) {
+          const dayKey = new Date(orderTime).toISOString().slice(0, 10);
+          if (dayKey === new Date(now).toISOString().slice(0, 10)) revenueToday += amount;
+          if (now - orderTime <= sevenDays) revenue7d += amount;
+          if (now - orderTime <= thirtyDays) revenue30d += amount;
+          const day = revenueByDay.get(dayKey);
+          if (day) day.revenue += amount;
+        }
         paidCount++;
       } else if (String(o.paymentStatus).toUpperCase() === "FAILED") {
         failedCount++;
@@ -1912,7 +2008,7 @@ adminRouter.get("/dashboard/stats", async (req, res) => {
     res.json({
       success: true,
       stats: {
-        revenue: { today: revenueToday, last7d: revenue7d, last30d: revenue30d, total: totalRevenue },
+        revenue: { today: revenueToday, last7d: revenue7d, last30d: revenue30d, total: totalRevenue, daily: dailyRevenue },
         orders: { total: orders.length, paid: paidCount, pending: pendingCount, failed: failedCount },
         productsCount: products.length,
         customersCount: users.length,
@@ -2234,9 +2330,21 @@ adminRouter.put("/settings", async (req, res) => {
 adminRouter.get("/export/orders", async (req, res) => {
   try {
     const orders = await FirebaseRtdb.getAllGlobalOrders();
-    const csvRows = ["Order Number,Date,Customer Name,Customer Email,Status,Payment Status,Total"];
+    const csvRows = ["Order Number,Invoice Number,Date,Customer Name,Customer Email,Status,Payment Status,Total,Payment Verified At,Delivered At,Email Status"];
     orders.forEach((o) => {
-      csvRows.push(`"${o.orderNumber}","${o.date}","${o.customerName || o.customer?.fullName || ""}","${o.customerEmail || o.customer?.email || ""}","${o.status}","${o.paymentStatus}","${o.total}"`);
+      csvRows.push([
+        o.orderNumber,
+        o.invoiceNumber,
+        o.date,
+        o.customerName || o.customer?.fullName,
+        o.customerEmail || o.customer?.email,
+        o.status,
+        o.paymentStatus,
+        o.total,
+        o.paymentVerifiedAt,
+        o.deliveredAt,
+        o.emailDelivery?.status
+      ].map(safeCsvCell).join(","));
     });
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", "attachment; filename=orders_export.csv");
@@ -2250,7 +2358,7 @@ adminRouter.get("/export/customers", async (req, res) => {
     const users = await FirebaseRtdb.getAllUsers();
     const csvRows = ["Name,Email,Mobile,Role,Joined Date"];
     users.forEach((u) => {
-      csvRows.push(`"${u.name || ""}","${u.email || ""}","${u.mobile || ""}","${u.role || "customer"}","${u.joinedDate || ""}"`);
+      csvRows.push([u.name, u.email, u.mobile, u.role || "customer", u.joinedDate].map(safeCsvCell).join(","));
     });
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", "attachment; filename=customers_export.csv");
@@ -2556,11 +2664,14 @@ var generateEasebuzzRetrieveHash = (params) => {
 var getEasebuzzBaseUrl = (env) => {
   return env === "prod" ? "https://pay.easebuzz.in" : "https://testpay.easebuzz.in";
 };
+var getEasebuzzDashboardUrl = (env) => {
+  return env === "prod" ? "https://dashboard.easebuzz.in" : "https://testdashboard.easebuzz.in";
+};
 
 // server/paymentAccess.ts
 function isPaidOrderForProduct(order, userId, productId) {
   return Boolean(
-    order && order.userId === userId && String(order.paymentStatus).toUpperCase() === "PAID" && order.paymentProvider === "Easebuzz" && Boolean(order.transactionId) && !["REFUNDED", "PARTIALLY_REFUNDED", "REVOKED", "CANCELLED", "FAILED"].includes(String(order.status).toUpperCase()) && order.deliveryStatus !== "REVOKED" && order.downloadStatus !== "REVOKED" && Array.isArray(order.items) && order.items.some((item) => item.productId === productId)
+    order && order.userId === userId && String(order.paymentStatus).toUpperCase() === "PAID" && order.paymentProvider === "Easebuzz" && Boolean(order.transactionId) && !["REFUNDED", "PARTIALLY_REFUNDED", "REVOKED", "CANCELLED", "FAILED"].includes(String(order.status).toUpperCase()) && order.deliveryStatus === "DELIVERED" && order.downloadStatus === "AVAILABLE" && Array.isArray(order.items) && order.items.some((item) => item.productId === productId)
   );
 }
 async function findPaidPurchase(userId, productId, purchaseId, orderId) {
@@ -2575,19 +2686,31 @@ async function findPaidPurchase(userId, productId, purchaseId, orderId) {
 function easebuzzRetrieveHash(key, txnid, salt) {
   return generateEasebuzzRetrieveHash({ key, txnid, salt });
 }
-function matchesVerifiedEasebuzzPayment(data, order, merchantKey) {
+function matchesEasebuzzPaymentIdentity(data, order, merchantKey) {
   const expectedAmount = Number(order.total);
   const receivedAmount = Number(data?.amount);
   return Boolean(
-    data && String(data.status).toLowerCase() === "success" && data.txnid === (order.easebuzzTxnId || order.transactionId || order.orderNumber || order.id) && (!data.key || data.key === merchantKey) && Number.isFinite(expectedAmount) && expectedAmount > 0 && Number.isFinite(receivedAmount) && receivedAmount > 0 && Math.round(expectedAmount * 100) === Math.round(receivedAmount * 100)
+    data && data.txnid === (order.easebuzzTxnId || order.transactionId || order.orderNumber || order.id) && (!data.key || data.key === merchantKey) && Number.isFinite(expectedAmount) && expectedAmount > 0 && Number.isFinite(receivedAmount) && receivedAmount > 0 && Math.round(expectedAmount * 100) === Math.round(receivedAmount * 100)
   );
+}
+function matchesVerifiedEasebuzzPayment(data, order, merchantKey) {
+  return matchesEasebuzzPaymentIdentity(data, order, merchantKey) && String(data.status).toLowerCase() === "success";
 }
 
 // server/purchaseEmail.ts
 import crypto4 from "crypto";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { Resend } from "resend";
-var getAppUrl = () => "https://www.ffdigital.shop";
+var getAppUrl = () => {
+  try {
+    const configured = new URL(process.env.APP_URL || "https://www.ffdigital.shop");
+    if (configured.protocol === "https:" || process.env.NODE_ENV !== "production" && configured.protocol === "http:") {
+      return configured.origin;
+    }
+  } catch {
+  }
+  return "https://www.ffdigital.shop";
+};
 var escapeHtml = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 var toPdfText = (value) => String(value ?? "").normalize("NFKD").replace(/[^\x20-\x7E]/g, "?");
 var money = (value) => `INR ${Number(value || 0).toFixed(2)}`;
@@ -2633,7 +2756,8 @@ async function buildInvoicePdf(order) {
   drawRight("PAID", width - margin, height - 84, 9, bold, rgb(0.77, 1, 0.88));
   let y = height - 148;
   const orderNumber = order.orderNumber || order.id || "N/A";
-  const orderDate = order.updatedAt || order.createdAt || (/* @__PURE__ */ new Date()).toISOString();
+  const invoiceNumber = order.invoiceNumber || `INV-${orderNumber}`;
+  const orderDate = order.paymentVerifiedAt || order.updatedAt || order.createdAt || (/* @__PURE__ */ new Date()).toISOString();
   const formattedDate = new Date(orderDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
   page.drawRectangle({ x: margin, y: y - 84, width: 244, height: 92, color: rgb(0.98, 0.98, 0.99), borderColor: line, borderWidth: 1 });
   drawText("BILLED TO", margin + 14, y - 12, 8, bold, purple);
@@ -2642,7 +2766,7 @@ async function buildInvoicePdf(order) {
   drawText(order.customer?.phone || order.customer?.country || "India", margin + 14, y - 64, 8.5, regular, muted);
   const orderCardX = width - margin - 244;
   page.drawRectangle({ x: orderCardX, y: y - 84, width: 244, height: 92, color: purpleLight, borderColor: rgb(0.86, 0.84, 0.98), borderWidth: 1 });
-  drawText("ORDER DETAILS", orderCardX + 14, y - 12, 8, bold, purple);
+  drawText(`INVOICE ${invoiceNumber}`, orderCardX + 14, y - 12, 8, bold, purple);
   drawText("Order ID", orderCardX + 14, y - 31, 8, regular, muted);
   drawRight(orderNumber, orderCardX + 230, y - 31, 8.5, bold);
   drawText("Date", orderCardX + 14, y - 48, 8, regular, muted);
@@ -2699,15 +2823,16 @@ async function buildInvoicePdf(order) {
   drawText(`Support: ${supportEmail}`, margin, 61, 8, regular, muted);
   page.drawLine({ start: { x: margin, y: 44 }, end: { x: width - margin, y: 44 }, thickness: 0.8, color: line });
   drawText("Computer-generated receipt - no signature required.", margin, 27, 7.5, regular, muted);
-  drawRight(`Invoice ${orderNumber}`, width - margin, 27, 7.5, regular, muted);
+  drawRight(`Invoice ${invoiceNumber}`, width - margin, 27, 7.5, regular, muted);
   const bytes = await pdf.save();
   return Buffer.from(bytes);
 }
 function buildPurchaseEmailHtml(order, links, options = {}) {
   const customerName = escapeHtml(order.customer?.fullName || order.customerName || "Customer");
   const orderNumber = escapeHtml(order.orderNumber || order.id || "");
+  const invoiceNumber = escapeHtml(order.invoiceNumber || `INV-${order.orderNumber || order.id || ""}`);
   const total = escapeHtml(money(order.total ?? order.amount));
-  const orderDate = escapeHtml(new Date(order.updatedAt || order.createdAt || Date.now()).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }));
+  const orderDate = escapeHtml(new Date(order.paymentVerifiedAt || order.updatedAt || order.createdAt || Date.now()).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }));
   const supportEmail = escapeHtml(process.env.INVOICE_SUPPORT_EMAIL || "ffdigital.support@gmail.com");
   const accountUrl = `${getAppUrl()}/account`;
   const linkRows = links.map((link) => {
@@ -2738,7 +2863,7 @@ function buildPurchaseEmailHtml(order, links, options = {}) {
           ${linkRows}
 
           <div style="margin:24px 0;padding:20px;background:#f7f6ff;border-radius:12px">
-            <div style="font-size:15px;font-weight:800;margin-bottom:6px">Invoice & account</div>
+            <div style="font-size:15px;font-weight:800;margin-bottom:6px">Invoice ${invoiceNumber} & account</div>
             <div style="font-size:12px;line-height:1.55;color:#747887;margin-bottom:15px">A PDF invoice is attached to this email. You can also download it securely below.</div>
             ${invoiceButton}<a href="${escapeHtml(accountUrl)}" style="display:inline-block;color:#4f3fc0;text-decoration:none;padding:12px 8px;font-size:13px;font-weight:700">View My Account \u2192</a>
           </div>
@@ -2761,6 +2886,7 @@ Download invoice: ${options.invoiceUrl}` : "";
   return `Payment successful
 
 Order: ${order.orderNumber || order.id}
+Invoice: ${order.invoiceNumber || `INV-${order.orderNumber || order.id}`}
 Amount paid: ${money(order.total ?? order.amount)}
 
 Download your order items:
@@ -2807,12 +2933,13 @@ async function sendPurchaseConfirmationEmail(order, links, options = {}) {
 runServerSeed().catch((err) => console.warn("Startup seed error:", err));
 var EASEBUZZ_KEY = (process.env.EASEBUZZ_KEY || "").trim();
 var EASEBUZZ_SALT = (process.env.EASEBUZZ_SALT || "").trim();
-var rawEasebuzzEnv = (process.env.EASEBUZZ_ENV || "test").trim().toLowerCase();
-var EASEBUZZ_ENV = rawEasebuzzEnv.startsWith("prod") ? "prod" : "test";
+var rawEasebuzzEnv = (process.env.EASEBUZZ_ENV || "").trim().toLowerCase();
+var EASEBUZZ_ENV_VALID = ["test", "prod", "production"].includes(rawEasebuzzEnv) || !rawEasebuzzEnv && process.env.NODE_ENV !== "production";
+var EASEBUZZ_ENV = ["prod", "production"].includes(rawEasebuzzEnv) ? "prod" : "test";
 var CRON_SECRET = process.env.CRON_SECRET || "";
 var EASEBUZZ_BASE_URL = getEasebuzzBaseUrl(EASEBUZZ_ENV);
-var EASEBUZZ_DASHBOARD_URL = EASEBUZZ_ENV === "prod" ? "https://dashboard.easebuzz.in" : "https://testdashboard.easebuzz.in";
-var getHostUrl = (req) => {
+var EASEBUZZ_DASHBOARD_URL = getEasebuzzDashboardUrl(EASEBUZZ_ENV);
+var getConfiguredAppUrl = () => {
   if (process.env.APP_URL) {
     try {
       const configured = new URL(process.env.APP_URL);
@@ -2822,7 +2949,10 @@ var getHostUrl = (req) => {
     } catch {
     }
   }
-  if (process.env.NODE_ENV === "production") return "https://www.ffdigital.shop";
+  return "https://www.ffdigital.shop";
+};
+var getHostUrl = (req) => {
+  if (process.env.APP_URL || process.env.NODE_ENV === "production") return getConfiguredAppUrl();
   const forwardedHost = req.headers["x-forwarded-host"];
   const host = Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost || req.headers.host;
   const proto = req.headers["x-forwarded-proto"] || (req.secure ? "https" : "http");
@@ -2830,7 +2960,12 @@ var getHostUrl = (req) => {
     const cleanHost = String(host).split(",")[0].trim();
     return `${proto}://${cleanHost}`.replace(/\/+$/, "");
   }
-  return "https://www.ffdigital.shop";
+  return getConfiguredAppUrl();
+};
+var getPaymentRequestIp = (req) => {
+  const forwarded = process.env.VERCEL ? req.headers["x-vercel-forwarded-for"] || req.headers["x-forwarded-for"] : void 0;
+  const candidate = String(Array.isArray(forwarded) ? forwarded[0] : forwarded || req.ip || "").split(",")[0].trim();
+  return isIP(candidate) ? candidate : "";
 };
 var getProductCatalog = async () => {
   const databaseProducts = await FirebaseRtdb.getAllProducts();
@@ -2843,7 +2978,19 @@ app.use(helmet({
 }));
 app.use(cors({
   origin: (origin, callback) => {
-    callback(null, true);
+    if (!origin || origin.replace(/\/+$/, "") === getConfiguredAppUrl()) {
+      return callback(null, true);
+    }
+    if (process.env.NODE_ENV !== "production") {
+      try {
+        const url = new URL(origin);
+        if (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)) {
+          return callback(null, true);
+        }
+      } catch {
+      }
+    }
+    return callback(null, false);
   },
   credentials: true
 }));
@@ -2872,7 +3019,7 @@ var authRateLimiter = async (req, res, next) => {
     await FirebaseRtdb.set(key, record);
     next();
   } catch {
-    next();
+    res.status(503).json({ success: false, message: "Authentication is temporarily unavailable." });
   }
 };
 var requireAuth = async (req, res, next) => {
@@ -2911,10 +3058,9 @@ app.get("/api/firebase-status", async (req, res) => {
   res.json({
     status: "ok",
     firebase: {
-      databaseUrl: status.url,
       connected: status.connected,
       mode: status.mode,
-      error: status.error
+      ...process.env.NODE_ENV !== "production" ? { databaseUrl: status.url, error: status.error } : {}
     }
   });
 });
@@ -2922,6 +3068,9 @@ app.get("/api/products", async (req, res) => {
   try {
     res.json({ success: true, products: await getProductCatalog() });
   } catch {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(503).json({ success: false, message: "Product catalog is temporarily unavailable." });
+    }
     res.json({ success: true, products: mergeProductCatalog(PRODUCTS, []) });
   }
 });
@@ -2936,6 +3085,27 @@ app.get("/api/products/:slugOrId", async (req, res) => {
     res.json({ success: true, product: found });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message || "Failed to fetch product." });
+  }
+});
+app.post("/api/newsletter/subscribe", authRateLimiter, async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ success: false, message: "Enter a valid email address." });
+  }
+  try {
+    const key = crypto5.createHash("sha256").update(email).digest("hex");
+    const path2 = `newsletterSubscribers/${key}`;
+    const existing = await FirebaseRtdb.get(path2);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await FirebaseRtdb.set(path2, {
+      email,
+      subscribedAt: existing?.subscribedAt || now,
+      lastConsentAt: now,
+      status: "subscribed"
+    });
+    res.json({ success: true, message: "Your subscription was saved." });
+  } catch {
+    res.status(503).json({ success: false, message: "Could not save your subscription. Please retry." });
   }
 });
 app.use("/api/admin", requireAdmin, adminRouter);
@@ -2995,12 +3165,9 @@ app.post("/api/auth/forgot-password", authRateLimiter, async (req, res) => {
   try {
     const { email, mobile, newPassword, confirmNewPassword } = req.body;
     const result = await AuthServiceServer.resetPasswordWithEmailAndMobile({ email, mobile, newPassword, confirmNewPassword });
-    if (!result.success) {
-      return res.status(400).json(result);
-    }
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Password reset failed." });
+    res.status(result.success ? 200 : 400).json(result);
+  } catch {
+    res.status(503).json({ success: false, message: "Password reset is temporarily unavailable." });
   }
 });
 app.get("/api/auth/me", requireAuth, async (req, res) => {
@@ -3041,6 +3208,25 @@ app.get("/api/user/sync-all", requireAuth, async (req, res) => {
     res.json({ success: true, data: { profile, cart, wishlist, orders, downloads, settings } });
   } catch {
     res.status(500).json({ success: false, message: "Failed to sync user data." });
+  }
+});
+app.put("/api/user/profile", requireAuth, async (req, res) => {
+  const parsed = z2.object({
+    name: z2.string().trim().min(2).max(100).optional(),
+    company: z2.string().trim().max(150).optional(),
+    country: z2.string().trim().min(2).max(100).optional()
+  }).strict().safeParse(req.body);
+  if (!parsed.success || Object.keys(parsed.data || {}).length === 0) {
+    return res.status(400).json({ success: false, message: "Only name, company and country can be updated." });
+  }
+  try {
+    const profile = await FirebaseRtdb.getUserProfile(req.userId);
+    if (!profile) return res.status(404).json({ success: false, message: "Account not found." });
+    const updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    await FirebaseRtdb.updateUserProfile(req.userId, { ...parsed.data, updatedAt });
+    res.json({ success: true, user: { ...profile, ...parsed.data, updatedAt } });
+  } catch {
+    res.status(503).json({ success: false, message: "Could not save profile changes." });
   }
 });
 app.get("/api/user/cart", requireAuth, async (req, res) => {
@@ -3085,13 +3271,45 @@ app.get("/api/user/orders", requireAuth, async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to fetch orders." });
   }
 });
+app.get("/api/user/downloads", requireAuth, async (req, res) => {
+  try {
+    const downloads = await FirebaseRtdb.getUserDownloads(req.userId);
+    const checked = await Promise.all(downloads.map(async (download) => {
+      if (!download?.orderId || !download?.productId) return null;
+      const order = await FirebaseRtdb.getGlobalOrder(download.orderId);
+      return isPaidOrderForProduct(order, req.userId, download.productId) ? download : null;
+    }));
+    res.set("Cache-Control", "private, no-store, max-age=0");
+    res.json({ success: true, downloads: checked.filter(Boolean) });
+  } catch {
+    res.status(503).json({ success: false, message: "Could not fetch downloads." });
+  }
+});
 app.get("/api/orders/:orderId", requireAuth, async (req, res) => {
   try {
     const order = await FirebaseRtdb.getUserOrderById(req.userId, req.params.orderId);
     if (!order) return res.status(404).json({ success: false, message: "Order not found." });
+    res.set("Cache-Control", "private, no-store, max-age=0");
     res.json({ success: true, order });
   } catch {
     res.status(500).json({ success: false, message: "Failed to fetch order." });
+  }
+});
+app.get("/api/orders/:orderId/invoice", requireAuth, async (req, res) => {
+  try {
+    const order = await FirebaseRtdb.getUserOrderById(req.userId, req.params.orderId);
+    if (!order) return res.status(404).send("Order not found.");
+    if (String(order.paymentStatus).toUpperCase() !== "PAID" || order.paymentProvider !== "Easebuzz" || !order.transactionId) {
+      return res.status(403).send("A verified paid order is required for an invoice.");
+    }
+    const invoice = await buildInvoicePdf(order);
+    const invoiceNumber = String(order.invoiceNumber || `INV-${order.id}`).replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="invoice-${invoiceNumber}.pdf"`);
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    return res.status(200).send(invoice);
+  } catch {
+    return res.status(503).send("Invoice is temporarily unavailable.");
   }
 });
 var handleOrderCreation = async (req, res) => {
@@ -3099,6 +3317,17 @@ var handleOrderCreation = async (req, res) => {
   try {
     const userId = req.userId;
     const { items, customer, discountCode, paymentMethod } = req.body;
+    const buyerProfile = await FirebaseRtdb.getUserProfile(userId);
+    const buyerEmail = String(buyerProfile?.email || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
+      return res.status(400).json({ success: false, message: "Add a valid email to your account before checkout.", requestId });
+    }
+    if (customer?.email && String(customer.email).trim().toLowerCase() !== buyerEmail) {
+      return res.status(400).json({ success: false, message: "Checkout email must match your account email.", requestId });
+    }
+    if (customer?.country && String(customer.country).trim().toLowerCase() !== "india") {
+      return res.status(400).json({ success: false, message: "Only India is supported for this checkout.", requestId });
+    }
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: "Cart items are required.", requestId });
     }
@@ -3171,7 +3400,7 @@ var handleOrderCreation = async (req, res) => {
       date: now.split("T")[0],
       createdAt: now,
       updatedAt: now,
-      customerEmail: customer?.email || req.userEmail,
+      customerEmail: buyerEmail,
       customerName: customer?.fullName || "Customer",
       productId: primaryProductId,
       productNameSnapshot: primaryProductName,
@@ -3184,10 +3413,10 @@ var handleOrderCreation = async (req, res) => {
       currency: "INR",
       customer: {
         fullName: customer?.fullName || "Customer",
-        email: customer?.email || req.userEmail,
+        email: buyerEmail,
         phone: customer?.phone || "",
         company: customer?.company || "",
-        country: customer?.country || "India"
+        country: "India"
       },
       items: validatedItems,
       subtotal: calculatedSubtotal,
@@ -3223,7 +3452,7 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
   try {
     const { orderId, agreeTerms } = req.body;
     const userId = req.userId;
-    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT || !EASEBUZZ_ENV_VALID) {
       return res.status(503).json({ success: false, message: "Easebuzz payment gateway is not configured yet." });
     }
     if (!orderId) {
@@ -3235,6 +3464,9 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
     const order = await FirebaseRtdb.getUserOrderById(userId, orderId);
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found." });
+    }
+    if (String(order.customer?.country || "").trim().toLowerCase() !== "india") {
+      return res.status(400).json({ success: false, message: "Only India is supported for this checkout." });
     }
     if (String(order.paymentStatus).toUpperCase() === "PAID" || ["REFUNDED", "REVOKED", "CANCELLED"].includes(String(order.status).toUpperCase()) || order.deliveryStatus === "REVOKED") {
       return res.status(400).json({ success: false, message: "This order cannot be paid again." });
@@ -3257,13 +3489,23 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
     const amount = amountObj.formatted;
     const txnid = `${order.orderNumber || "ORD"}_${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, "").substring(0, 35);
     const rawFirstname = order.customer?.fullName || order.customerName || "Customer";
-    const firstname = sanitizeFieldText(String(rawFirstname).trim().split(" ")[0].replace(/[^a-zA-Z0-9]/g, ""), 50, "Customer");
+    const firstname = sanitizeFieldText(rawFirstname, 50, "Customer");
     const email = String(order.customer?.email || order.customerEmail || req.userEmail || "").trim().toLowerCase();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email || !emailRegex.test(email)) {
       return res.status(400).json({ success: false, message: "A valid customer email is required for payment." });
     }
-    const productinfo = "FFDigital Products";
+    const productinfo = sanitizeFieldText(
+      (order.items || []).map((item) => item.productTitle || item.productId).filter(Boolean).join(", "),
+      100,
+      "FFDigital Products"
+    );
+    const initiatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const buyerIp = getPaymentRequestIp(req);
+    const itemIds = sanitizeFieldText(
+      (order.items || []).map((item) => item.productId).filter(Boolean).join(","),
+      100
+    );
     const baseAppUrl = getHostUrl(req);
     const surl = `${baseAppUrl}/api/payments/easebuzz/callback`;
     const furl = `${baseAppUrl}/api/payments/easebuzz/callback`;
@@ -3278,16 +3520,13 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
       phone,
       surl,
       furl,
-      udf1: "",
-      udf2: "",
-      udf3: "",
-      udf4: "",
-      udf5: "",
-      udf6: "",
-      udf7: "",
-      udf8: "",
-      udf9: "",
-      udf10: ""
+      udf1: order.id,
+      udf2: "India",
+      udf3: initiatedAt,
+      udf4: buyerIp,
+      udf5: initiatedAt,
+      udf6: itemIds,
+      udf7: "terms-refund-privacy:accepted"
     });
     const ebzResponse = await fetch(`${EASEBUZZ_BASE_URL}/payment/initiateLink`, {
       method: "POST",
@@ -3306,6 +3545,14 @@ app.post("/api/payments/easebuzz/initiate", requireAuth, async (req, res) => {
       return res.status(502).json({ success: false, message: "Invalid response from Easebuzz payment gateway." });
     }
     if (ebzData && ebzData.status === 1 && ebzData.data) {
+      order.customer = { ...order.customer, country: "India" };
+      order.paymentInitiatedAt = initiatedAt;
+      order.paymentInitiationIp = buyerIp || null;
+      order.termsAccepted = true;
+      order.termsAcceptedAt = initiatedAt;
+      order.termsAcceptedPolicies = ["terms", "refund", "privacy"];
+      order.termsDocumentUrl = `${baseAppUrl}/terms`;
+      order.easebuzzProductInfo = productinfo;
       order.transactionId = txnid;
       order.easebuzzTxnId = txnid;
       order.easebuzzAccessKey = ebzData.data;
@@ -3346,7 +3593,9 @@ var fulfillPaidOrder = async (order) => {
         orderId: order.id,
         productId: item.productId,
         productTitle: item.productTitle,
-        purchasedAt: now,
+        purchasedAt: order.paymentVerifiedAt || now,
+        deliveredAt: now,
+        invoiceNumber: order.invoiceNumber,
         accessStatus: "active",
         downloadLimit: 10,
         downloadCount: 0
@@ -3361,6 +3610,7 @@ var fulfillPaidOrder = async (order) => {
         productTitle: item.productTitle,
         status: "AVAILABLE",
         createdAt: now,
+        deliveredAt: now,
         downloadUrl: item.downloadUrl,
         fileSize: item.fileSize,
         fileFormat: item.fileFormat
@@ -3369,6 +3619,10 @@ var fulfillPaidOrder = async (order) => {
   }
   order.fulfillmentStatus = "READY";
   order.fulfilledAt = order.fulfilledAt || now;
+  order.deliveredAt = order.deliveredAt || now;
+  order.deliveryStatus = "DELIVERED";
+  order.downloadStatus = "AVAILABLE";
+  order.items = order.items.map((item) => ({ ...item, downloadStatus: "AVAILABLE" }));
   await FirebaseRtdb.saveGlobalOrder(order);
 };
 var createPurchaseEmailLinks = async (order) => {
@@ -3419,6 +3673,7 @@ var createPurchaseInvoiceLink = async (order) => {
 };
 var sendPurchaseEmailSafely = async (order) => {
   if (order.emailDelivery?.status === "sent") return;
+  if (order.deliveryStatus !== "DELIVERED" || !order.fulfilledAt) return;
   const attemptedAt = (/* @__PURE__ */ new Date()).toISOString();
   const previousAttempts = Number(order.emailDelivery?.attempts || 0);
   try {
@@ -3466,8 +3721,8 @@ var sendPurchaseEmailSafely = async (order) => {
     }
   }
 };
-async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
-  if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId, source = "EASEBUZZ_RECONCILE") {
+  if (!EASEBUZZ_KEY || !EASEBUZZ_SALT || !EASEBUZZ_ENV_VALID) {
     return { success: false, message: "Easebuzz payment gateway is not configured yet." };
   }
   const globalOrder = await FirebaseRtdb.getGlobalOrder(orderIdOrTxnId);
@@ -3481,12 +3736,24 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
     if (globalOrder.paymentProvider !== "Easebuzz" || !globalOrder.transactionId) {
       return { success: false, status: "PENDING", orderId: globalOrder.id, message: "Payment must be verified with Easebuzz." };
     }
+    const needsInvoiceMetadata = !globalOrder.invoiceNumber || !globalOrder.paymentVerifiedAt;
+    globalOrder.invoiceNumber ||= `INV-${globalOrder.id}`;
+    globalOrder.paymentVerifiedAt ||= globalOrder.updatedAt || (/* @__PURE__ */ new Date()).toISOString();
+    if (needsInvoiceMetadata) {
+      await FirebaseRtdb.saveGlobalOrder(globalOrder);
+    }
     try {
       await fulfillPaidOrder(globalOrder);
       await sendPurchaseEmailSafely(globalOrder);
-    } catch {
+    } catch (error) {
+      console.error("Paid order fulfillment needs retry:", globalOrder.id, error);
     }
-    return { success: true, status: "PAID", orderId: globalOrder.id, message: "Already paid" };
+    return {
+      success: true,
+      status: "PAID",
+      orderId: globalOrder.id,
+      message: globalOrder.deliveryStatus === "DELIVERED" ? "Payment confirmed." : "Payment confirmed. Delivery is still being prepared."
+    };
   }
   const txnid = globalOrder.easebuzzTxnId || globalOrder.transactionId || globalOrder.orderNumber || globalOrder.id;
   const transHash = easebuzzRetrieveHash(EASEBUZZ_KEY, txnid, EASEBUZZ_SALT);
@@ -3506,20 +3773,31 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
       signal: AbortSignal.timeout(1e4)
     });
   } catch {
-    return { success: false, status: "PENDING", orderId: globalOrder.id, message: "Payment gateway verification is unavailable. Please retry." };
+    return { success: false, status: "PENDING", orderId: globalOrder.id, retryable: true, message: "Payment gateway verification is unavailable. Please retry." };
   }
   if (!verifyRes.ok) {
-    return { success: false, status: "PENDING", orderId: globalOrder.id, message: "Payment gateway verification is unavailable. Please retry." };
+    return { success: false, status: "PENDING", orderId: globalOrder.id, retryable: true, message: "Payment gateway verification is unavailable. Please retry." };
   }
   let verifyData;
   try {
     verifyData = await verifyRes.json();
   } catch {
-    return { success: false, status: "PENDING", orderId: globalOrder.id, message: "Payment gateway response could not be verified. Please retry." };
+    return { success: false, status: "PENDING", orderId: globalOrder.id, retryable: true, message: "Payment gateway response could not be verified. Please retry." };
   }
   const payment = verifyData?.data;
-  if (Number(verifyData?.status) !== 1 || !matchesVerifiedEasebuzzPayment(payment, globalOrder, EASEBUZZ_KEY)) {
+  if (Number(verifyData?.status) !== 1 || !matchesEasebuzzPaymentIdentity(payment, globalOrder, EASEBUZZ_KEY)) {
     return { success: false, status: "PENDING", orderId: globalOrder.id, message: "Payment has not been verified for this order." };
+  }
+  const gatewayStatus = String(payment.status || "").toLowerCase();
+  if (["failure", "failed", "usercancelled", "cancelled"].includes(gatewayStatus)) {
+    const latestOrder = await FirebaseRtdb.getGlobalOrder(globalOrder.id);
+    if (latestOrder?.paymentStatus === "PAID" && latestOrder.paymentProvider === "Easebuzz" && latestOrder.transactionId) {
+      return verifyAndSyncEasebuzzOrder(globalOrder.id, source);
+    }
+    return { success: false, status: "FAILED", orderId: globalOrder.id, message: "Easebuzz reported that this payment failed." };
+  }
+  if (!matchesVerifiedEasebuzzPayment(payment, globalOrder, EASEBUZZ_KEY)) {
+    return { success: false, status: "PENDING", orderId: globalOrder.id, message: "Payment is still pending at Easebuzz." };
   }
   const easebuzzId = payment.easepayid || payment.transaction_id || txnid;
   const expectedAmount = Number(globalOrder.total).toFixed(2);
@@ -3527,66 +3805,111 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId) {
   globalOrder.status = "PAID";
   globalOrder.paymentStatus = "PAID";
   globalOrder.orderStatus = "PAID";
-  globalOrder.deliveryStatus = "DELIVERED";
-  globalOrder.downloadStatus = "AVAILABLE";
+  globalOrder.deliveryStatus = "PENDING";
+  globalOrder.downloadStatus = "UNAVAILABLE";
+  globalOrder.paymentVerifiedAt = now;
+  globalOrder.invoiceNumber = globalOrder.invoiceNumber || `INV-${globalOrder.id}`;
   globalOrder.transactionId = easebuzzId;
   globalOrder.paymentId = easebuzzId;
   globalOrder.paymentProvider = "Easebuzz";
   globalOrder.updatedAt = now;
-  globalOrder.items = (globalOrder.items || []).map((item) => ({
-    ...item,
-    downloadStatus: "AVAILABLE"
-  }));
   await FirebaseRtdb.saveGlobalOrder(globalOrder);
-  await fulfillPaidOrder(globalOrder);
-  await AuditLogger.log({
-    requestId: generateRequestId(),
-    userId: globalOrder.userId,
+  try {
+    await AuditLogger.log({
+      requestId: generateRequestId(),
+      userId: globalOrder.userId,
+      orderId: globalOrder.id,
+      eventType: "PAYMENT_VERIFICATION_SUCCESS",
+      eventStatus: "SUCCESS",
+      source,
+      metadata: { easebuzzId, amount: expectedAmount }
+    });
+  } catch (error) {
+    console.error("Payment audit log needs repair:", globalOrder.id, error);
+  }
+  try {
+    await fulfillPaidOrder(globalOrder);
+    await sendPurchaseEmailSafely(globalOrder);
+  } catch (error) {
+    console.error("Paid order fulfillment needs retry:", globalOrder.id, error);
+  }
+  return {
+    success: true,
+    status: "PAID",
     orderId: globalOrder.id,
-    eventType: "PAYMENT_VERIFICATION_SUCCESS",
-    eventStatus: "SUCCESS",
-    source: "EASEBUZZ_CALLBACK",
-    metadata: { easebuzzId, amount: expectedAmount }
-  });
-  await sendPurchaseEmailSafely(globalOrder);
-  return { success: true, status: "PAID", orderId: globalOrder.id };
+    message: globalOrder.deliveryStatus === "DELIVERED" ? "Payment confirmed." : "Payment confirmed. Delivery is still being prepared."
+  };
 }
+var notificationMatchesOrder = (params, order) => Boolean(order && params.key === EASEBUZZ_KEY && params.txnid === order.easebuzzTxnId && Number.isFinite(Number(params.amount)) && Number(params.amount) === Number(order.total));
+var isFailedEasebuzzStatus = (status) => ["failure", "failed", "usercancelled", "cancelled"].includes(String(status || "").toLowerCase());
+var recordPaymentNotification = async (req, order, source) => {
+  try {
+    await AuditLogger.log({
+      requestId: generateRequestId(),
+      userId: order.userId,
+      orderId: order.id,
+      eventType: source === "EASEBUZZ_CALLBACK" ? "EASEBUZZ_CALLBACK_RECEIVED" : "WEBHOOK_RECEIVED",
+      eventStatus: "PENDING",
+      source,
+      metadata: { txnid: req.body.txnid, gatewayStatus: String(req.body.status || "").slice(0, 40) },
+      ip: getPaymentRequestIp(req),
+      userAgent: req.headers["user-agent"]
+    });
+  } catch (error) {
+    console.error("Payment notification audit could not be saved:", order.id, error);
+  }
+};
 app.post("/api/payments/easebuzz/callback", async (req, res) => {
   try {
-    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT || !EASEBUZZ_ENV_VALID) {
       return res.status(503).send("Easebuzz payment gateway is not configured yet.");
     }
     const params = req.body;
-    if (!verifyEasebuzzCallbackHash(params, EASEBUZZ_SALT)) {
+    if (!params || typeof params.txnid !== "string" || typeof params.status !== "string" || !verifyEasebuzzCallbackHash(params, EASEBUZZ_SALT)) {
       return res.status(400).send("Invalid signature");
     }
     const txnid = params.txnid;
-    const status = params.status;
     const globalOrder = await FirebaseRtdb.getGlobalOrder(txnid);
-    if (!globalOrder) {
-      return res.status(404).send("Order not found");
+    if (!notificationMatchesOrder(params, globalOrder)) {
+      return res.status(400).send("Payment notification does not match an order");
     }
     const baseAppUrl = getHostUrl(req);
-    if (String(globalOrder.paymentStatus).toUpperCase() === "PAID") {
-      return res.redirect(`${baseAppUrl}/checkout?status=success&orderId=${globalOrder.id}`);
-    }
-    if (status !== "success") {
-      globalOrder.status = "FAILED";
-      globalOrder.paymentStatus = "FAILED";
-      globalOrder.orderStatus = "FAILED";
-      globalOrder.failureReason = params.error_Message || "Payment failed on gateway";
-      globalOrder.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-      await FirebaseRtdb.saveGlobalOrder(globalOrder);
-      return res.redirect(`${baseAppUrl}/checkout?status=failed&orderId=${globalOrder.id}`);
-    }
-    const syncResult = await verifyAndSyncEasebuzzOrder(txnid);
+    await recordPaymentNotification(req, globalOrder, "EASEBUZZ_CALLBACK");
+    const syncResult = await verifyAndSyncEasebuzzOrder(txnid, "EASEBUZZ_CALLBACK");
     if (syncResult.success) {
       return res.redirect(`${baseAppUrl}/checkout?status=success&orderId=${globalOrder.id}`);
-    } else {
-      return res.redirect(`${baseAppUrl}/checkout?status=pending&orderId=${globalOrder.id}`);
     }
+    if (syncResult.status === "FAILED" || isFailedEasebuzzStatus(params.status)) {
+      return res.redirect(`${baseAppUrl}/checkout?status=failed&orderId=${globalOrder.id}`);
+    }
+    return res.redirect(`${baseAppUrl}/checkout?status=pending&orderId=${globalOrder.id}`);
   } catch (err) {
     res.status(500).send("Internal server error");
+  }
+});
+app.post("/api/payments/easebuzz/webhook", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT || !EASEBUZZ_ENV_VALID) {
+      return res.status(503).json({ success: false, message: "Payment gateway is not configured." });
+    }
+    const params = req.body;
+    if (!params || typeof params !== "object" || typeof params.txnid !== "string" || typeof params.key !== "string" || params.key !== EASEBUZZ_KEY || !verifyEasebuzzCallbackHash(params, EASEBUZZ_SALT)) {
+      return res.status(400).json({ success: false, message: "Invalid payment notification." });
+    }
+    const order = await FirebaseRtdb.getGlobalOrder(params.txnid);
+    if (!notificationMatchesOrder(params, order)) {
+      return res.status(400).json({ success: false, message: "Payment notification does not match an order." });
+    }
+    await recordPaymentNotification(req, order, "EASEBUZZ_WEBHOOK");
+    const result = await verifyAndSyncEasebuzzOrder(order.id, "EASEBUZZ_WEBHOOK");
+    if (result.retryable) {
+      return res.status(503).json({ success: false, status: "PENDING" });
+    }
+    return res.json({ success: true, status: result.status || "PENDING" });
+  } catch (error) {
+    console.error("Easebuzz webhook processing failed:", error);
+    return res.status(503).json({ success: false, message: "Payment notification could not be processed." });
   }
 });
 app.post("/api/payments/easebuzz/reconcile/:orderId", async (req, res) => {
@@ -3614,12 +3937,13 @@ app.post("/api/payments/easebuzz/reconcile/:orderId", async (req, res) => {
       }
     }
     const result = await verifyAndSyncEasebuzzOrder(orderId);
+    res.set("Cache-Control", "private, no-store, max-age=0");
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message || "Reconciliation failed." });
   }
 });
-app.post("/api/payments/easebuzz/reconcile-cron", async (req, res) => {
+var reconcileCron = async (req, res) => {
   try {
     const cronHeader = req.headers["x-cron-secret"] || req.headers["authorization"]?.replace("Bearer ", "");
     if (!CRON_SECRET || cronHeader !== CRON_SECRET) {
@@ -3629,11 +3953,11 @@ app.post("/api/payments/easebuzz/reconcile-cron", async (req, res) => {
     const tenMinsAgo = Date.now() - 10 * 60 * 1e3;
     const reconciliationOrders = allOrders.filter((order) => {
       const paymentStatus = String(order.paymentStatus).toUpperCase();
-      const isStuckPayment = (order.status === "PENDING_PAYMENT" || paymentStatus === "PENDING") && new Date(order.createdAt || order.date || 0).getTime() < tenMinsAgo;
+      const isStuckPayment = Boolean(order.easebuzzTxnId) && (order.status === "PENDING_PAYMENT" || paymentStatus === "PENDING") && new Date(order.updatedAt || order.createdAt || order.date || 0).getTime() < tenMinsAgo;
       const lastEmailAttempt = new Date(order.emailDelivery?.lastAttemptAt || 0).getTime();
-      const needsEmailRetry = paymentStatus === "PAID" && order.emailDelivery?.status !== "sent" && lastEmailAttempt < tenMinsAgo;
+      const needsEmailRetry = paymentStatus === "PAID" && (order.emailDelivery?.status !== "sent" || !order.fulfilledAt || !order.deliveredAt) && lastEmailAttempt < tenMinsAgo;
       return isStuckPayment || needsEmailRetry;
-    });
+    }).slice(0, 20);
     const results = [];
     for (const ord of reconciliationOrders) {
       const resSync = await verifyAndSyncEasebuzzOrder(ord.id);
@@ -3643,7 +3967,9 @@ app.post("/api/payments/easebuzz/reconcile-cron", async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message || "Cron reconciliation failed." });
   }
-});
+};
+app.get("/api/payments/easebuzz/reconcile-cron", reconcileCron);
+app.post("/api/payments/easebuzz/reconcile-cron", reconcileCron);
 app.post("/api/downloads/:productId/token", requireAuth, async (req, res) => {
   try {
     const userId = req.userId;

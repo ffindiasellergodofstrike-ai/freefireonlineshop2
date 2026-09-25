@@ -10,6 +10,7 @@ import {
   formatEasebuzzAmount,
   sanitizeFieldText,
   getEasebuzzBaseUrl,
+  getEasebuzzDashboardUrl,
   sha512,
 } from './easebuzz';
 
@@ -58,7 +59,7 @@ test('hash field consistency: initiate hash matches Easebuzz exact sequence', ()
   assert.equal(generatedHash, expectedHash);
 });
 
-test('hash field consistency: buildEasebuzzInitiatePayload includes all 10 UDFs and matching hash', () => {
+test('hash field consistency: initiation uses ten UDF hash positions and only sends populated supported fields', () => {
   const params = {
     key: 'MY_MERCHANT_KEY',
     salt: 'MY_MERCHANT_SALT',
@@ -186,6 +187,8 @@ test('invalid and valid amount formatting', () => {
 test('Easebuzz endpoint selection matches environment', () => {
   assert.equal(getEasebuzzBaseUrl('test'), 'https://testpay.easebuzz.in');
   assert.equal(getEasebuzzBaseUrl('prod'), 'https://pay.easebuzz.in');
+  assert.equal(getEasebuzzDashboardUrl('test'), 'https://testdashboard.easebuzz.in');
+  assert.equal(getEasebuzzDashboardUrl('prod'), 'https://dashboard.easebuzz.in');
 });
 
 test('Easebuzz retrieve transaction hash generation', () => {

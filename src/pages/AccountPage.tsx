@@ -30,7 +30,7 @@ import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
 
 const formatISTDate = (isoString?: string): string => {
-  if (!isoString) return '2026';
+  if (!isoString) return 'Not recorded';
   try {
     const date = new Date(isoString);
     if (isNaN(date.getTime())) return isoString;
@@ -134,7 +134,7 @@ export const AccountPage: React.FC = () => {
 
   const downloads = orders
     .filter((order) => order.paymentStatus?.toUpperCase() === 'PAID' &&
-      order.deliveryStatus !== 'REVOKED' && order.downloadStatus !== 'REVOKED' &&
+      order.deliveryStatus === 'DELIVERED' && order.downloadStatus === 'AVAILABLE' &&
       !['REFUNDED', 'PARTIALLY_REFUNDED', 'REVOKED', 'CANCELLED', 'FAILED'].includes(String(order.status).toUpperCase()) &&
       order.paymentProvider === 'Easebuzz' && Boolean(order.transactionId))
     .flatMap((order) => order.items.map((item) => ({ ...item, orderId: order.id })));
@@ -175,6 +175,25 @@ export const AccountPage: React.FC = () => {
       }
     } catch {
       showToast('error', 'Download Error', 'Could not generate verified download token.');
+    }
+  };
+
+  const handleInvoiceDownload = async (order: Order) => {
+    try {
+      const response = await fetch(`/api/orders/${encodeURIComponent(order.id)}/invoice`, {
+        credentials: 'include', cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('Invoice is unavailable.');
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `invoice-${order.invoiceNumber || `INV-${order.orderNumber}`}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch {
+      showToast('error', 'Invoice Unavailable', 'Could not download your invoice. Please retry.');
     }
   };
 
@@ -578,9 +597,9 @@ export const AccountPage: React.FC = () => {
               <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl flex items-start gap-2.5">
                 <KeyRound className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-bold text-blue-950">Security Code Recovery</p>
+                  <p className="font-bold text-blue-950">Email and Mobile Recovery</p>
                   <p className="text-[11px] text-blue-800 mt-0.5">
-                    You can reset your password anytime via the Security Code recovery portal without external email dependency.
+                    Reset your password with your registered email and mobile number.
                   </p>
                 </div>
               </div>
@@ -590,7 +609,7 @@ export const AccountPage: React.FC = () => {
                 onClick={() => navigate('/forgot-password')}
                 className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors"
               >
-                Change Password via Security Code
+                Reset Password with Email and Mobile
               </button>
             </div>
           </div>
@@ -600,6 +619,7 @@ export const AccountPage: React.FC = () => {
       {/* Invoice Modal */}
       {viewingOrder && (() => {
         const isPaid = String(viewingOrder.paymentStatus || '').toUpperCase() === 'PAID';
+        const isDelivered = viewingOrder.deliveryStatus === 'DELIVERED' && viewingOrder.downloadStatus === 'AVAILABLE';
         const isFailed =
           String(viewingOrder.paymentStatus || '').toUpperCase() === 'FAILED' ||
           String(viewingOrder.status || '').toUpperCase() === 'FAILED';
@@ -653,6 +673,12 @@ export const AccountPage: React.FC = () => {
                   <span className="font-medium">Download and receipt unlock after Easebuzz confirms this payment.</span>
                 </div>
               )}
+              {isPaid && <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-700 space-y-1">
+                <p>Invoice: <strong>{viewingOrder.invoiceNumber || `INV-${viewingOrder.orderNumber}`}</strong></p>
+                <p>Payment verified: {formatISTDate(viewingOrder.paymentVerifiedAt)}</p>
+                <p>Digital access: {isDelivered ? `Delivered ${formatISTDate(viewingOrder.deliveredAt)}` : 'Preparing delivery'}</p>
+                <p>Email: {viewingOrder.emailDelivery?.status === 'sent' ? 'Accepted by mail provider' : 'Pending or retrying'}</p>
+              </div>}
 
               <div className="space-y-3">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
@@ -668,7 +694,7 @@ export const AccountPage: React.FC = () => {
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
-                        {isPaid && (
+                        {isPaid && isDelivered && (
                           <button
                             onClick={() => handleSecureDownload(i.productId, `${i.productSlug || 'product'}-v${i.version || '1.0'}.zip`)}
                             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all active:scale-95 flex items-center gap-2"
@@ -689,11 +715,11 @@ export const AccountPage: React.FC = () => {
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
                   <span>Subtotal</span>
-                  <span className="font-mono text-slate-900">₹{viewingOrder.total.toFixed(2)}</span>
+                  <span className="font-mono text-slate-900">₹{Number(viewingOrder.subtotal ?? viewingOrder.total).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-widest">
                   <span>Tax (GST)</span>
-                  <span className="font-mono text-slate-900">₹0.00</span>
+                  <span className="font-mono text-slate-900">₹{Number(viewingOrder.tax || 0).toFixed(2)}</span>
                 </div>
                 <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
                   <span className="text-sm font-black text-slate-900">Total Amount</span>
@@ -703,10 +729,7 @@ export const AccountPage: React.FC = () => {
 
               {isPaid && (
                 <button
-                  onClick={() => {
-                    showToast('success', 'Invoice Saved', 'Digital receipt has been generated.');
-                    setViewingOrder(null);
-                  }}
+                  onClick={() => { void handleInvoiceDownload(viewingOrder); }}
                   className="w-full py-4 bg-slate-900 hover:bg-black text-white font-black rounded-2xl text-xs sm:text-sm transition-all shadow-xl active:scale-95 min-h-[44px]"
                 >
                   Print / Save PDF Receipt

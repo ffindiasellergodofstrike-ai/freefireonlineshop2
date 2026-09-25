@@ -173,9 +173,7 @@ class AuthServiceImpl {
     }
   }
 
-  /**
-   * Reset password using Email + Mobile verification
-   */
+  /** Reset password with the registered email and mobile number. */
   public async resetPasswordWithEmailAndMobile(
     payload: ResetPasswordPayload
   ): Promise<{ success: boolean; message: string }> {
@@ -236,17 +234,7 @@ class AuthServiceImpl {
       console.error('Update profile error:', err);
     }
 
-    this.currentUser = {
-      ...current,
-      ...data,
-      id: current.id,
-      name: data.name ?? current.name,
-      email: data.email ?? current.email,
-      username: data.username ?? current.username,
-    };
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(this.currentUser));
-    this.notify();
-    return { success: true, user: this.currentUser || undefined };
+    return { success: false };
   }
 
   private signOutLocal(): void {

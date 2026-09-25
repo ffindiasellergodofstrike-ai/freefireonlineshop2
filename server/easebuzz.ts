@@ -313,3 +313,7 @@ export const generateEasebuzzRetrieveHash = (params: {
 export const getEasebuzzBaseUrl = (env: 'prod' | 'test'): string => {
   return env === 'prod' ? 'https://pay.easebuzz.in' : 'https://testpay.easebuzz.in';
 };
+
+export const getEasebuzzDashboardUrl = (env: 'prod' | 'test'): string => {
+  return env === 'prod' ? 'https://dashboard.easebuzz.in' : 'https://testdashboard.easebuzz.in';
+};

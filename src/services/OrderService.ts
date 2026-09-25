@@ -5,7 +5,7 @@ const isDownloadableOrder = (order: Order): boolean =>
   order.paymentStatus?.toUpperCase() === 'PAID' && order.paymentProvider === 'Easebuzz' &&
   Boolean(order.transactionId) &&
   !['REFUNDED', 'PARTIALLY_REFUNDED', 'REVOKED', 'CANCELLED', 'FAILED'].includes(String(order.status).toUpperCase()) &&
-  order.deliveryStatus !== 'REVOKED' && order.downloadStatus !== 'REVOKED';
+  order.deliveryStatus === 'DELIVERED' && order.downloadStatus === 'AVAILABLE';
 
 class OrderServiceImpl {
   private orders: Order[] = [];
@@ -46,6 +46,7 @@ class OrderServiceImpl {
     try {
       const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
         credentials: 'include',
+        cache: 'no-store',
       });
       if (res.ok) {
         const data = await res.json();

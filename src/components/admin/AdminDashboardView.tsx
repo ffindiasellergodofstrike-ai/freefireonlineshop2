@@ -10,27 +10,21 @@ interface AdminDashboardViewProps {
 }
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ stats, recentOrders, recentAuditLogs, health }) => {
-  const chartData = [
-    { name: 'Day 1', revenue: stats?.revenue?.last30d ? stats.revenue.last30d * 0.1 : 1200 },
-    { name: 'Day 5', revenue: stats?.revenue?.last30d ? stats.revenue.last30d * 0.2 : 2400 },
-    { name: 'Day 10', revenue: stats?.revenue?.last30d ? stats.revenue.last30d * 0.35 : 4100 },
-    { name: 'Day 15', revenue: stats?.revenue?.last30d ? stats.revenue.last30d * 0.5 : 5600 },
-    { name: 'Day 20', revenue: stats?.revenue?.last30d ? stats.revenue.last30d * 0.7 : 7800 },
-    { name: 'Day 25', revenue: stats?.revenue?.last30d ? stats.revenue.last30d * 0.85 : 9500 },
-    { name: 'Today', revenue: stats?.revenue?.today || 3400 },
-  ];
+  const chartData = stats?.revenue?.daily || [];
+  const firebaseConnected = health?.firebase?.connected === true;
+  const easebuzzConfigured = health?.easebuzz?.status === 'configured';
 
   return (
     <div className="space-y-6">
       {/* Live Health Badges */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div className="flex items-center space-x-3">
-          <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">System Status: <strong className="text-emerald-600 dark:text-emerald-400">All Systems Operational</strong></span>
+          <div className={`w-3 h-3 rounded-full ${firebaseConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Firebase: <strong>{firebaseConnected ? 'Reachable' : 'Check connection'}</strong></span>
         </div>
         <div className="flex items-center space-x-4 text-xs font-medium text-slate-500">
-          <span className="flex items-center"><ShieldCheck className="w-4 h-4 text-emerald-500 mr-1" /> Firebase RTDB: Connected</span>
-          <span className="flex items-center"><CheckCircle2 className="w-4 h-4 text-emerald-500 mr-1" /> Easebuzz: Active ({health?.easebuzz?.environment || 'test'})</span>
+          <span className="flex items-center"><ShieldCheck className="w-4 h-4 mr-1" /> Firebase RTDB: {firebaseConnected ? 'Reachable' : 'Unavailable'}</span>
+          <span className="flex items-center"><CheckCircle2 className="w-4 h-4 mr-1" /> Easebuzz: {easebuzzConfigured ? 'Configured' : 'Not configured'} ({health?.easebuzz?.environment || 'unset'})</span>
         </div>
       </div>
 
@@ -45,7 +39,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ stats, r
           </div>
           <div className="mt-4 flex items-baseline justify-between">
             <span className="text-2xl font-bold text-slate-900 dark:text-white">₹{stats?.revenue?.today?.toLocaleString() || '0'}</span>
-            <span className="text-xs font-semibold text-emerald-600 flex items-center">+12.4%</span>
           </div>
         </div>
 
@@ -91,7 +84,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ stats, r
 
       {/* Revenue Chart */}
       <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
-        <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-4">Revenue Growth (Last 30 Days)</h3>
+        <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-4">Daily Revenue (Last 30 Days)</h3>
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>

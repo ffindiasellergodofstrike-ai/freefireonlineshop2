@@ -8,6 +8,13 @@ import { isAllowedProductPreviewUrl } from './productPreview';
 
 export const adminRouter = Router();
 
+export function safeCsvCell(value: unknown): string {
+  const text = String(value ?? '').replace(/\r\n|\r/g, '\n');
+  // Spreadsheet programs can execute cells beginning with these characters.
+  const safe = /^[\s]*[=+\-@]/.test(text) ? `'${text}` : text;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
 // Configure Multer for memory storage
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -87,7 +94,7 @@ adminRouter.get('/me', async (req: any, res: Response) => {
       admin: profile,
       health: {
         firebase: firebaseStatus,
-        easebuzz: { status: 'active', environment: process.env.EASEBUZZ_ENV || 'test' },
+        easebuzz: { status: process.env.EASEBUZZ_KEY && process.env.EASEBUZZ_SALT ? 'configured' : 'not_configured', environment: process.env.EASEBUZZ_ENV || 'unset' },
       },
     });
   } catch (err: any) {
@@ -115,17 +122,28 @@ adminRouter.get('/dashboard/stats', async (req: any, res: Response) => {
     let paidCount = 0;
     let pendingCount = 0;
     let failedCount = 0;
+    const dailyRevenue = Array.from({ length: 30 }, (_, index) => {
+      const day = new Date(now - (29 - index) * oneDay).toISOString().slice(0, 10);
+      return { name: day, revenue: 0 };
+    });
+    const revenueByDay = new Map(dailyRevenue.map((day) => [day.name, day]));
 
     orders.forEach((o: any) => {
-      const amount = o.total || 0;
-      const orderTime = new Date(o.date || o.createdAt || 0).getTime();
+      const amount = Number(o.total) || 0;
+      const paidDate = o.paymentVerifiedAt || o.paidAt || o.createdAt || o.date;
+      const orderTime = new Date(paidDate || 0).getTime();
       const isPaid = String(o.paymentStatus).toUpperCase() === 'PAID';
 
       if (isPaid) {
         totalRevenue += amount;
-        if (now - orderTime <= oneDay) revenueToday += amount;
-        if (now - orderTime <= sevenDays) revenue7d += amount;
-        if (now - orderTime <= thirtyDays) revenue30d += amount;
+        if (Number.isFinite(orderTime)) {
+          const dayKey = new Date(orderTime).toISOString().slice(0, 10);
+          if (dayKey === new Date(now).toISOString().slice(0, 10)) revenueToday += amount;
+          if (now - orderTime <= sevenDays) revenue7d += amount;
+          if (now - orderTime <= thirtyDays) revenue30d += amount;
+          const day = revenueByDay.get(dayKey);
+          if (day) day.revenue += amount;
+        }
         paidCount++;
       } else if (String(o.paymentStatus).toUpperCase() === 'FAILED') {
         failedCount++;
@@ -137,7 +155,7 @@ adminRouter.get('/dashboard/stats', async (req: any, res: Response) => {
     res.json({
       success: true,
       stats: {
-        revenue: { today: revenueToday, last7d: revenue7d, last30d: revenue30d, total: totalRevenue },
+        revenue: { today: revenueToday, last7d: revenue7d, last30d: revenue30d, total: totalRevenue, daily: dailyRevenue },
         orders: { total: orders.length, paid: paidCount, pending: pendingCount, failed: failedCount },
         productsCount: products.length,
         customersCount: users.length,
@@ -516,9 +534,13 @@ adminRouter.put('/settings', async (req: any, res: Response) => {
 adminRouter.get('/export/orders', async (req: any, res: Response) => {
   try {
     const orders = await FirebaseRtdb.getAllGlobalOrders();
-    const csvRows = ['Order Number,Date,Customer Name,Customer Email,Status,Payment Status,Total'];
+    const csvRows = ['Order Number,Invoice Number,Date,Customer Name,Customer Email,Status,Payment Status,Total,Payment Verified At,Delivered At,Email Status'];
     orders.forEach((o: any) => {
-      csvRows.push(`"${o.orderNumber}","${o.date}","${o.customerName || o.customer?.fullName || ''}","${o.customerEmail || o.customer?.email || ''}","${o.status}","${o.paymentStatus}","${o.total}"`);
+      csvRows.push([
+        o.orderNumber, o.invoiceNumber, o.date, o.customerName || o.customer?.fullName,
+        o.customerEmail || o.customer?.email, o.status, o.paymentStatus, o.total,
+        o.paymentVerifiedAt, o.deliveredAt, o.emailDelivery?.status,
+      ].map(safeCsvCell).join(','));
     });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=orders_export.csv');
@@ -533,7 +555,7 @@ adminRouter.get('/export/customers', async (req: any, res: Response) => {
     const users = await FirebaseRtdb.getAllUsers();
     const csvRows = ['Name,Email,Mobile,Role,Joined Date'];
     users.forEach((u: any) => {
-      csvRows.push(`"${u.name || ''}","${u.email || ''}","${u.mobile || ''}","${u.role || 'customer'}","${u.joinedDate || ''}"`);
+      csvRows.push([u.name, u.email, u.mobile, u.role || 'customer', u.joinedDate].map(safeCsvCell).join(','));
     });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=customers_export.csv');

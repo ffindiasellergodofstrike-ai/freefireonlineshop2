@@ -21,7 +21,7 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
     transactionId: 'synthetic-gateway-txn-1', easebuzzTxnId: 'synthetic-gateway-txn-1',
     status: 'PENDING_PAYMENT', orderStatus: 'PENDING', paymentStatus: 'PENDING',
     deliveryStatus: 'PENDING', downloadStatus: 'UNAVAILABLE', total: 550,
-    customer: { fullName: 'Demo Buyer', email: 'demo@example.test', phone: '9999999999' },
+    customer: { fullName: 'Demo Buyer', email: 'demo@example.test', phone: '9999999999', country: 'India' },
     items: [{ productId: 'linknest-pro', productTitle: 'Demo Product', downloadUrl: '/api/downloads/linknest-pro' }],
   };
   let storedOrder: any = structuredClone(order);
@@ -38,6 +38,7 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
     downloadCount: 0, downloadLimit: 10,
   });
   const savedDownloads: any[] = [];
+  const profileUpdates: any[] = [];
   let gatewayPayment: any = { status: 'pending', txnid: order.easebuzzTxnId, amount: '550.00' };
   let gatewayAvailable = true;
   const gatewayRequests: string[] = [];
@@ -53,7 +54,11 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
       userId === 'buyer' ? purchases : []);
     context.mock.method(FirebaseRtdb, 'getUserDownloads', async () => savedDownloads);
     context.mock.method(FirebaseRtdb, 'getUserProfile', async (userId: string) =>
-      ({ role: userId === 'admin' ? 'admin' : 'customer' }));
+      ({ role: userId === 'admin' ? 'admin' : 'customer', email: `${userId}@example.test` }));
+    context.mock.method(FirebaseRtdb, 'updateUserProfile', async (_userId: string, update: any) => {
+      profileUpdates.push(update);
+      return update;
+    });
     context.mock.method(FirebaseRtdb, 'saveGlobalOrder', async (updated: any) => {
       storedOrder = structuredClone(updated);
     });
@@ -100,25 +105,44 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
       headers: { Cookie: `sid=${sid}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
-    const callback = (status: string) => {
+    const signedNotification = (status: string, endpoint: 'callback' | 'webhook' = 'callback', overrides: Record<string, string> = {}) => {
       const params = {
         status, email: 'demo@example.test', firstname: 'Demo', productinfo: 'Demo',
-        amount: '550.00', txnid: order.easebuzzTxnId, key: 'synthetic-merchant',
+        amount: '550.00', txnid: order.easebuzzTxnId, key: 'synthetic-merchant', ...overrides,
       };
       const hash = crypto.createHash('sha512').update([
         'synthetic-test-salt', status, ...Array(10).fill(''), params.email,
         params.firstname, params.productinfo, params.amount, params.txnid, params.key,
       ].join('|')).digest('hex');
-      return originalFetch(`${baseUrl}/api/payments/easebuzz/callback`, {
+      return originalFetch(`${baseUrl}/api/payments/easebuzz/${endpoint}`, {
         method: 'POST', headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           Origin: 'https://attacker.example',
         },
-        body: new URLSearchParams({ ...params, hash }), redirect: 'manual',
+        body: new URLSearchParams({ ...params, hash: overrides.hash || hash }), redirect: 'manual',
       });
     };
+    const callback = (status: string) => signedNotification(status);
+    const webhook = (status: string, overrides?: Record<string, string>) =>
+      signedNotification(status, 'webhook', overrides);
 
     assert.equal((await request(`/api/orders/${order.id}`, 'stranger')).status, 404);
+    assert.equal((await request(`/api/orders/${order.id}/invoice`)).status, 403);
+    assert.equal((await request(`/api/orders/${order.id}/invoice`, 'stranger')).status, 404);
+    assert.equal((await request('/api/newsletter/subscribe', 'buyer', { email: 'invalid' })).status, 400);
+    assert.equal((await request('/api/newsletter/subscribe', 'buyer', { email: 'buyer@example.test' })).status, 200);
+    assert.ok([...storedTokens.keys()].some((key) => key.startsWith('newsletterSubscribers/')));
+    const updateProfile = (body: object) => originalFetch(`${baseUrl}/api/user/profile`, {
+      method: 'PUT', headers: { Cookie: 'sid=buyer', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    assert.equal((await updateProfile({ role: 'admin' })).status, 400);
+    assert.equal(profileUpdates.length, 0);
+    assert.equal((await updateProfile({ name: 'Buyer Name', company: 'Studio', country: 'India' })).status, 200);
+    assert.equal(profileUpdates[0].company, 'Studio');
+    assert.equal((await request('/api/orders/create', 'buyer', {
+      items: [{ productId: 'linknest-pro' }], customer: { email: 'other@example.test' },
+    })).status, 400);
     assert.equal((await request('/api/downloads/stream?token=../orders/synthetic-order-1')).status, 400);
     assert.equal((await request('/api/downloads/linknest-pro/token', 'buyer', {})).status, 403);
     assert.equal((await request(`/api/invoices/email?token=${invoiceToken}`)).status, 403);
@@ -134,13 +158,22 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
     assert.equal((await (await reconcile()).json()).status, 'PENDING');
     assert.equal(storedOrder.paymentStatus, 'PENDING');
     gatewayAvailable = true;
+    assert.equal((await webhook('success', { hash: 'invalid' })).status, 400);
+    assert.equal((await webhook('success', { amount: '5.50' })).status, 400);
+    assert.equal((await (await webhook('success')).json()).status, 'PENDING');
+    gatewayAvailable = false;
+    assert.equal((await webhook('success')).status, 503);
+    gatewayAvailable = true;
+    assert.equal(storedOrder.paymentStatus, 'PENDING');
     const awaitingVerification = await callback('success');
     assert.match(awaitingVerification.headers.get('location') || '', /status=pending/);
     assert.doesNotMatch(awaitingVerification.headers.get('location') || '', /attacker\.example/);
     assert.equal(storedOrder.paymentStatus, 'PENDING');
 
+    assert.match((await callback('pending')).headers.get('location') || '', /status=pending/);
+
     assert.match((await callback('failure')).headers.get('location') || '', /status=failed/);
-    assert.equal(storedOrder.paymentStatus, 'FAILED');
+    assert.equal(storedOrder.paymentStatus, 'PENDING');
     assert.equal((await request('/api/payments/easebuzz/initiate', 'buyer', {
       orderId: order.id, agreeTerms: true,
     })).status, 409);
@@ -151,7 +184,12 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
     assert.equal((await (await reconcile()).json()).success, false);
     gatewayPayment = { status: 'success', txnid: order.easebuzzTxnId, amount: '5.50' };
     assert.equal((await (await reconcile()).json()).success, false);
-    assert.equal(storedOrder.paymentStatus, 'FAILED');
+    assert.equal(storedOrder.paymentStatus, 'PENDING');
+
+    gatewayPayment = { status: 'failure', txnid: order.easebuzzTxnId, amount: '550.00' };
+    assert.equal((await (await reconcile()).json()).status, 'FAILED');
+    assert.equal((await (await webhook('failure')).json()).status, 'FAILED');
+    assert.equal(storedOrder.paymentStatus, 'PENDING');
 
     const manualPaid = await originalFetch(`${baseUrl}/api/admin/orders/${order.id}/status`, {
       method: 'PUT', headers: { Cookie: 'sid=admin', 'Content-Type': 'application/json' },
@@ -161,7 +199,16 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
 
     gatewayPayment = { status: 'success', txnid: order.easebuzzTxnId, amount: '550.00', easepayid: 'synthetic-provider-id' };
     assert.equal((await (await reconcile()).json()).status, 'PAID');
+    assert.equal((await webhook('success')).status, 200);
     assert.equal(storedOrder.paymentStatus, 'PAID');
+    assert.equal(storedOrder.invoiceNumber, `INV-${order.id}`);
+    assert.match(storedOrder.paymentVerifiedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.match(storedOrder.deliveredAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(storedOrder.deliveryStatus, 'DELIVERED');
+    const invoiceResponse = await request(`/api/orders/${order.id}/invoice`);
+    assert.equal(invoiceResponse.status, 200);
+    assert.equal(invoiceResponse.headers.get('content-type'), 'application/pdf');
+    assert.equal((await (await request('/api/user/downloads')).json()).downloads.length, 1);
     assert.equal(storedOrder.easebuzzTxnId, order.easebuzzTxnId);
     assert.equal(storedOrder.transactionId, 'synthetic-provider-id');
     assert.equal(savedDownloads.length, 1);
@@ -169,7 +216,7 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
     assert.equal((await (await reconcile()).json()).status, 'PAID');
     assert.equal(savedDownloads.length, 1);
     assert.equal(purchases[0].downloadCount, 2);
-    assert.deepEqual(gatewayRequests, Array(6).fill('https://testdashboard.easebuzz.in/transaction/v2/retrieve'));
+    assert.deepEqual(gatewayRequests, Array(12).fill('https://testdashboard.easebuzz.in/transaction/v2/retrieve'));
 
     assert.match((await callback('failure')).headers.get('location') || '', /status=success/);
     assert.equal(storedOrder.paymentStatus, 'PAID');
@@ -196,6 +243,7 @@ test('HTTP payment flow denies unpaid downloads and unverified payments, then re
     });
     assert.equal(revoke.status, 200);
     assert.equal((await request('/api/downloads/linknest-pro/token', 'buyer', { orderId: order.id })).status, 403);
+    assert.equal((await (await request('/api/user/downloads')).json()).downloads.length, 0);
     assert.equal((await request(`/api/downloads/stream?token=${encodeURIComponent(revokedToken)}`)).status, 403);
     assert.equal((await request(`/api/invoices/email?token=${invoiceToken}`)).status, 403);
   } finally {

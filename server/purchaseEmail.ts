@@ -19,7 +19,18 @@ export interface PurchaseEmailOptions {
   invoiceUrl?: string;
 }
 
-const getAppUrl = (): string => 'https://www.ffdigital.shop';
+const getAppUrl = (): string => {
+  try {
+    const configured = new URL(process.env.APP_URL || 'https://www.ffdigital.shop');
+    if (configured.protocol === 'https:' ||
+        (process.env.NODE_ENV !== 'production' && configured.protocol === 'http:')) {
+      return configured.origin;
+    }
+  } catch {
+    // Use the canonical URL if the deployment setting is invalid.
+  }
+  return 'https://www.ffdigital.shop';
+};
 
 const escapeHtml = (value: unknown): string => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -109,7 +120,8 @@ export async function buildInvoicePdf(order: any): Promise<Buffer> {
   let y = height - 148;
 
   const orderNumber = order.orderNumber || order.id || 'N/A';
-  const orderDate = order.updatedAt || order.createdAt || new Date().toISOString();
+  const invoiceNumber = order.invoiceNumber || `INV-${orderNumber}`;
+  const orderDate = order.paymentVerifiedAt || order.updatedAt || order.createdAt || new Date().toISOString();
   const formattedDate = new Date(orderDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
   page.drawRectangle({ x: margin, y: y - 84, width: 244, height: 92, color: rgb(0.98, 0.98, 0.99), borderColor: line, borderWidth: 1 });
@@ -120,7 +132,7 @@ export async function buildInvoicePdf(order: any): Promise<Buffer> {
 
   const orderCardX = width - margin - 244;
   page.drawRectangle({ x: orderCardX, y: y - 84, width: 244, height: 92, color: purpleLight, borderColor: rgb(0.86, 0.84, 0.98), borderWidth: 1 });
-  drawText('ORDER DETAILS', orderCardX + 14, y - 12, 8, bold, purple);
+  drawText(`INVOICE ${invoiceNumber}`, orderCardX + 14, y - 12, 8, bold, purple);
   drawText('Order ID', orderCardX + 14, y - 31, 8, regular, muted);
   drawRight(orderNumber, orderCardX + 230, y - 31, 8.5, bold);
   drawText('Date', orderCardX + 14, y - 48, 8, regular, muted);
@@ -182,7 +194,7 @@ export async function buildInvoicePdf(order: any): Promise<Buffer> {
   drawText(`Support: ${supportEmail}`, margin, 61, 8, regular, muted);
   page.drawLine({ start: { x: margin, y: 44 }, end: { x: width - margin, y: 44 }, thickness: 0.8, color: line });
   drawText('Computer-generated receipt - no signature required.', margin, 27, 7.5, regular, muted);
-  drawRight(`Invoice ${orderNumber}`, width - margin, 27, 7.5, regular, muted);
+  drawRight(`Invoice ${invoiceNumber}`, width - margin, 27, 7.5, regular, muted);
 
   const bytes = await pdf.save();
   return Buffer.from(bytes);
@@ -191,8 +203,9 @@ export async function buildInvoicePdf(order: any): Promise<Buffer> {
 export function buildPurchaseEmailHtml(order: any, links: PurchaseEmailLink[], options: PurchaseEmailOptions = {}): string {
   const customerName = escapeHtml(order.customer?.fullName || order.customerName || 'Customer');
   const orderNumber = escapeHtml(order.orderNumber || order.id || '');
+  const invoiceNumber = escapeHtml(order.invoiceNumber || `INV-${order.orderNumber || order.id || ''}`);
   const total = escapeHtml(money(order.total ?? order.amount));
-  const orderDate = escapeHtml(new Date(order.updatedAt || order.createdAt || Date.now()).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
+  const orderDate = escapeHtml(new Date(order.paymentVerifiedAt || order.updatedAt || order.createdAt || Date.now()).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
   const supportEmail = escapeHtml(process.env.INVOICE_SUPPORT_EMAIL || 'ffdigital.support@gmail.com');
   const accountUrl = `${getAppUrl()}/account`;
   const linkRows = links.map((link) => {
@@ -227,7 +240,7 @@ export function buildPurchaseEmailHtml(order: any, links: PurchaseEmailLink[], o
           ${linkRows}
 
           <div style="margin:24px 0;padding:20px;background:#f7f6ff;border-radius:12px">
-            <div style="font-size:15px;font-weight:800;margin-bottom:6px">Invoice & account</div>
+            <div style="font-size:15px;font-weight:800;margin-bottom:6px">Invoice ${invoiceNumber} & account</div>
             <div style="font-size:12px;line-height:1.55;color:#747887;margin-bottom:15px">A PDF invoice is attached to this email. You can also download it securely below.</div>
             ${invoiceButton}<a href="${escapeHtml(accountUrl)}" style="display:inline-block;color:#4f3fc0;text-decoration:none;padding:12px 8px;font-size:13px;font-weight:700">View My Account →</a>
           </div>
@@ -247,7 +260,7 @@ export function buildPurchaseEmailText(order: any, links: PurchaseEmailLink[], o
     `${link.productTitle}: ${link.downloadUrl}\nExpires: ${new Date(link.expiresAt).toISOString()}`
   )).join('\n\n');
   const invoice = options.invoiceUrl ? `\n\nDownload invoice: ${options.invoiceUrl}` : '';
-  return `Payment successful\n\nOrder: ${order.orderNumber || order.id}\nAmount paid: ${money(order.total ?? order.amount)}\n\nDownload your order items:\n${rows}${invoice}\n\nA PDF invoice is attached. Keep these private links secure. Terms and refund rules are available on our website.`;
+  return `Payment successful\n\nOrder: ${order.orderNumber || order.id}\nInvoice: ${order.invoiceNumber || `INV-${order.orderNumber || order.id}`}\nAmount paid: ${money(order.total ?? order.amount)}\n\nDownload your order items:\n${rows}${invoice}\n\nA PDF invoice is attached. Keep these private links secure. Terms and refund rules are available on our website.`;
 }
 
 export async function sendPurchaseConfirmationEmail(order: any, links: PurchaseEmailLink[], options: PurchaseEmailOptions = {}): Promise<PurchaseEmailResult> {

@@ -4,19 +4,20 @@ import {
   CreditCard,
   Lock,
   CheckCircle2,
+  XCircle,
   Download,
   Sparkles,
   ChevronRight,
   PackageCheck,
   RefreshCw,
   Clock,
-  AlertTriangle,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import { OrderService } from '../services/OrderService';
 import { PaymentService } from '../services/PaymentService';
+import { isVerifiedPaidOrder, verifyReturnedPayment } from '../services/PaymentVerification';
 import { Order } from '../types';
 
 import { AuthService } from '../services/AuthService';
@@ -27,13 +28,6 @@ declare global {
   }
 }
 
-const isVerifiedPaidOrder = (order: Order | null): order is Order => Boolean(
-  order && order.paymentStatus?.toUpperCase() === 'PAID' &&
-  order.paymentProvider === 'Easebuzz' && order.transactionId &&
-  !['REFUNDED', 'PARTIALLY_REFUNDED', 'REVOKED', 'CANCELLED', 'FAILED'].includes(String(order.status).toUpperCase()) &&
-  order.deliveryStatus !== 'REVOKED' && order.downloadStatus !== 'REVOKED'
-);
-
 export const CheckoutPage: React.FC = () => {
   const { cartItems, cartSummary, appliedCoupon, clearCart, currentUser, navigate, searchParams } = useApp();
   const { showToast } = useToast();
@@ -42,15 +36,15 @@ export const CheckoutPage: React.FC = () => {
   const [customerName, setCustomerName] = useState(currentUser?.name || '');
   const [customerEmail, setCustomerEmail] = useState(currentUser?.email || '');
   const [customerPhone, setCustomerPhone] = useState(currentUser?.mobile || '');
-  const [billingCountry, setBillingCountry] = useState('India');
   const [paymentMethod] = useState<'easebuzz'>('easebuzz');
-  const [agreeTerms, setAgreeTerms] = useState(true);
+  const [agreeTerms, setAgreeTerms] = useState(false);
 
   // Processing & Completed State
   const [isProcessing, setIsProcessing] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [paymentView, setPaymentView] = useState<'checking' | 'pending' | 'failed'>(() =>
+    searchParams.status === 'failed' ? 'failed' : searchParams.status === 'pending' ? 'pending' : 'checking');
 
   // Load Easebuzz Script
   useEffect(() => {
@@ -69,30 +63,68 @@ export const CheckoutPage: React.FC = () => {
     const status = searchParams.status;
     const orderId = searchParams.orderId;
 
-    if ((status === 'success' || status === 'pending') && orderId) {
+    if ((status === 'success' || status === 'pending' || status === 'failed') && orderId) {
       let retryTimer: number | undefined;
-      setIsVerifying(true);
+      let lastVerificationMessage: string | undefined;
+      const verificationStartedAt = Date.now();
+      const canRetry = (attempt: number) => attempt < 14 && Date.now() - verificationStartedAt < 60_000;
       setVerificationError(null);
+      setPaymentView(status === 'failed' ? 'failed' : status === 'pending' ? 'pending' : 'checking');
 
       const poll = async (attempt: number) => {
         try {
-          const order = await OrderService.fetchOrderById(orderId);
+          const outcome = await verifyReturnedPayment(
+            () => OrderService.fetchOrderById(orderId),
+            async () => {
+              const response = await fetch(`/api/payments/easebuzz/reconcile/${encodeURIComponent(orderId)}`, {
+                method: 'POST',
+                credentials: 'include',
+                cache: 'no-store',
+              });
+              const result = await response.json().catch(() => null);
+              return { ...result, httpStatus: response.status };
+            },
+          );
           if (isCancelled) return;
-          if (isVerifiedPaidOrder(order)) {
-            setCompletedOrder(order);
+          if (outcome.kind === 'auth_required') {
+            setPaymentView(status === 'failed' ? 'failed' : 'pending');
+            setVerificationError('Your session expired. Please sign in and check the order in your account.');
+            return;
+          }
+          if (outcome.kind === 'paid') {
+            setCompletedOrder(outcome.order);
             clearCart();
-            setIsVerifying(false);
             try {
               confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
             } catch {}
-            showToast('success', 'Payment Verified', 'Your digital product access is now active!');
-          } else if (attempt < 5) {
+            showToast('success', 'Payment Successful', 'Your payment is confirmed.');
+            return;
+          }
+          if (outcome.kind === 'failed') {
+            setPaymentView('failed');
+            setVerificationError(outcome.message);
+            // A concurrent webhook can still confirm a payment after this callback.
+            if (attempt < 3 && canRetry(attempt)) {
+              retryTimer = window.setTimeout(() => { void poll(attempt + 1); }, 2000);
+            }
+            return;
+          }
+          setPaymentView((current) => status === 'failed' && current === 'failed' ? 'failed' : 'pending');
+          if (canRetry(attempt)) {
+            lastVerificationMessage = outcome.message || lastVerificationMessage;
             retryTimer = window.setTimeout(() => { void poll(attempt + 1); }, 2000);
           } else {
-            setVerificationError('Payment is not verified yet. Please retry verification or check your account later.');
+            setVerificationError(outcome.message || lastVerificationMessage ||
+              'Payment is still pending. Check again or view the order in your account.');
           }
         } catch {
-          if (!isCancelled) setVerificationError('Could not verify your payment. Please retry verification.');
+          if (isCancelled) return;
+          setPaymentView(status === 'failed' ? 'failed' : 'pending');
+          if (canRetry(attempt)) {
+            retryTimer = window.setTimeout(() => { void poll(attempt + 1); }, 2000);
+          } else {
+            setVerificationError('We could not get the latest result yet. Your order will update automatically when Easebuzz confirms it.');
+          }
         }
       };
 
@@ -101,20 +133,30 @@ export const CheckoutPage: React.FC = () => {
         isCancelled = true;
         if (retryTimer !== undefined) window.clearTimeout(retryTimer);
       };
-    } else if (status === 'failed') {
-      showToast('error', 'Payment Failed', 'Your transaction was cancelled or failed. Please try again.');
-      if (orderId) {
-        setIsVerifying(true);
-        setVerificationError('The gateway reported a failed payment. If your bank was charged, recheck this order before attempting another payment.');
-      }
     }
   }, [searchParams.status, searchParams.orderId]);
+
+  useEffect(() => {
+    if (!completedOrder || completedOrder.deliveryStatus === 'REVOKED' ||
+        (isVerifiedPaidOrder(completedOrder) && completedOrder.emailDelivery?.status)) return;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      if (++attempts > 20) {
+        window.clearInterval(timer);
+        return;
+      }
+      void OrderService.fetchOrderById(completedOrder.id).then((latest) => {
+        if (latest?.paymentStatus === 'PAID') setCompletedOrder(latest);
+      }).catch(() => undefined);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [completedOrder?.id, completedOrder?.deliveryStatus, completedOrder?.emailDelivery?.status]);
 
   // Sync customer form data when currentUser is loaded
   useEffect(() => {
     if (currentUser) {
       if (!customerName) setCustomerName(currentUser.name || '');
-      if (!customerEmail) setCustomerEmail(currentUser.email || '');
+      setCustomerEmail(currentUser.email || '');
       if (!customerPhone) setCustomerPhone(currentUser.mobile || '');
     }
   }, [currentUser]);
@@ -140,7 +182,7 @@ export const CheckoutPage: React.FC = () => {
         {
           fullName: customerName,
           email: customerEmail,
-          country: billingCountry,
+          country: 'India',
           phone: sanitizedPhone,
         } as any,
         cartSummary.discount,
@@ -161,16 +203,11 @@ export const CheckoutPage: React.FC = () => {
         const options = {
           access_key: initResult.accessKey,
           onResponse: (response: any) => {
-            // response will have the payment details
-            // The actual status is updated via webhook
-            console.log('Easebuzz Response:', response);
-            if (response.status === 'success') {
-              // The callback URL will handle the redirect, but we can also handle it here if it's a modal
-              window.location.href = `/checkout?status=success&orderId=${pendingOrder.id}`;
-            } else {
-              setIsProcessing(false);
-              showToast('error', 'Payment Cancelled', 'Payment process was not completed.');
-            }
+            // A browser callback is only a hint. The checkout page asks the
+            // server to verify the transaction with Easebuzz before showing paid.
+            const failed = ['failure', 'failed', 'usercancelled', 'cancelled']
+              .includes(String(response?.status || '').toLowerCase());
+            window.location.href = `/checkout?status=${failed ? 'failed' : 'pending'}&orderId=${encodeURIComponent(pendingOrder.id)}`;
           },
         };
 
@@ -182,38 +219,6 @@ export const CheckoutPage: React.FC = () => {
     } catch (err: any) {
       setIsProcessing(false);
       showToast('error', 'Checkout Error', err.message || 'An error occurred during checkout initiation.');
-    }
-  };
-
-  const handleReconcile = async () => {
-    const orderId = searchParams.orderId;
-    if (!orderId) return;
-    
-    setIsVerifying(true);
-    setVerificationError(null);
-    try {
-      const res = await fetch(`/api/payments/easebuzz/reconcile/${encodeURIComponent(orderId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (data.success) {
-        const order = await OrderService.fetchOrderById(orderId);
-        if (isVerifiedPaidOrder(order)) {
-          setCompletedOrder(order);
-          clearCart();
-          showToast('success', 'Order Reconciled', 'Access granted successfully.');
-        } else {
-          setVerificationError('Payment is not confirmed yet. Please try again in a moment.');
-        }
-      } else {
-        setVerificationError(
-          data.message || 'Payment is not confirmed yet. Please try again in a moment or check your bank account.'
-        );
-      }
-    } catch (err) {
-      setVerificationError('Network error during reconciliation.');
     }
   };
 
@@ -239,6 +244,7 @@ export const CheckoutPage: React.FC = () => {
 
   // SUCCESS CONFIRMATION VIEW
   if (completedOrder) {
+    const deliveryReady = isVerifiedPaidOrder(completedOrder);
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
       {/* Success Header */}
@@ -249,25 +255,40 @@ export const CheckoutPage: React.FC = () => {
 
         <div className="space-y-2">
           <span className="text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] text-emerald-600">
-            Payment Successful & Verified
+            Payment Successful
           </span>
           <h1 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight leading-tight">
-            Thank You For Your Purchase!
+            {deliveryReady ? 'Thank You For Your Purchase!' : 'Payment Confirmed'}
           </h1>
           <p className="text-slate-600 text-xs sm:text-base max-w-lg mx-auto leading-relaxed">
-            Your digital products have been provisioned for{' '}
-            <strong className="text-slate-900 break-all">{completedOrder.customerEmail}</strong>.
+            {deliveryReady ? 'Your digital products are ready for' : 'We are preparing digital access for'}{' '}
+            <strong className="text-slate-900 break-all">{completedOrder.customerEmail || completedOrder.customer?.email}</strong>.
+          </p>
+          <p className="text-slate-600 text-xs sm:text-sm">
+            Invoice: <strong>{completedOrder.invoiceNumber || `INV-${completedOrder.orderNumber}`}</strong>
+            {completedOrder.emailDelivery?.status === 'sent'
+              ? ' · Confirmation email accepted for delivery.'
+              : completedOrder.emailDelivery?.status === 'failed' || completedOrder.emailDelivery?.status === 'not_configured'
+                ? ' · Email delivery needs attention. Your order remains available in your account.'
+                : ' · Confirmation email is being prepared. Your order is saved in your account.'}
           </p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-6 px-4 py-3 sm:py-4 bg-slate-50 rounded-2xl border border-slate-200 text-[10px] sm:text-xs font-mono font-bold text-slate-700">
-          <span className="truncate">Reference: <strong className="text-slate-900">{completedOrder.orderNumber}</strong></span>
+          <span className="break-all">Reference: <strong className="text-slate-900">{completedOrder.orderNumber}</strong></span>
           <span className="hidden sm:inline text-slate-300">•</span>
           <span className="truncate">Paid: <strong className="text-emerald-600">₹{completedOrder.total.toFixed(2)}</strong></span>
         </div>
       </div>
 
+      {!deliveryReady && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 sm:p-6 text-sm text-blue-900 leading-relaxed">
+          Payment is confirmed. Your files and email are being prepared. Check My Account in a moment for your downloads and invoice.
+        </div>
+      )}
+
       {/* Digital Downloads Card */}
+      {deliveryReady && (
       <div className="bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden">
         <div className="p-5 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100">
           <div className="flex items-center gap-3 min-w-0">
@@ -289,17 +310,17 @@ export const CheckoutPage: React.FC = () => {
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 sm:flex sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">
-                      {item.product.categoryLabel}
+                      {item.product?.categoryLabel || item.category || 'Digital Product'}
                     </span>
-                    <h3 className="text-base sm:text-lg font-black text-slate-900 mt-1 truncate">{item.product.title}</h3>
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 mt-1 break-words">{item.product?.title || item.productTitle}</h3>
                     <p className="text-[10px] sm:text-xs text-slate-500 mt-1 truncate">
-                      Archive: {item.product.slug}-v{item.product.version || '1.0'}.zip ({item.product.fileSize || '38 MB'})
+                      Archive: {item.product?.slug || item.productSlug || item.productId}-v{item.product?.version || item.version || '1.0'}.zip ({item.product?.fileSize || item.fileSize || 'Size varies'})
                     </p>
                   </div>
 
                   <button
                     id={`download-archive-btn-${idx}`}
-                    onClick={() => handleSecureDownload(item.productId || item.product?.id || 'linknest-pro', `${item.product.slug || 'linknest-pro'}-v${item.product.version || '1.2.0'}.zip`)}
+                    onClick={() => handleSecureDownload(item.productId || item.product?.id, `${item.product?.slug || item.productSlug || item.productId}-v${item.product?.version || item.version || '1.0'}.zip`)}
                     className="p-2 sm:px-6 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl text-xs transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center justify-center gap-2 min-h-[44px] min-w-[44px] sm:min-w-0 shrink-0"
                   >
                     <Download className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" />
@@ -328,43 +349,42 @@ export const CheckoutPage: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
     </div>
     );
   }
 
-  // VERIFYING VIEW (POLLING OR PENDING RETURN FROM EASEBUZZ)
-  const isReturningFromGateway = (searchParams.status === 'success' || searchParams.status === 'pending') &&
+  // The URL is a hint; order and gateway state decide the visible result.
+  const isReturningFromGateway = ['success', 'pending', 'failed'].includes(searchParams.status || '') &&
     Boolean(searchParams.orderId);
-  if (isReturningFromGateway || isVerifying) {
+  if (isReturningFromGateway) {
+    const failed = paymentView === 'failed';
+    const checking = paymentView === 'checking';
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-6">
-        <div className="w-20 h-20 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto animate-pulse">
-          <Clock className="w-10 h-10" />
+      <div className="max-w-4xl mx-auto px-4 py-12 sm:py-16 text-center space-y-6 min-w-0">
+        <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto ${failed ? 'bg-red-50 text-red-600' : checking ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
+          {failed ? <XCircle className="w-10 h-10" /> : <Clock className="w-10 h-10" />}
         </div>
         <div className="space-y-2">
-          <h1 className="text-2xl font-extrabold text-slate-900">
-            {searchParams.status === 'failed' ? 'Payment Not Confirmed' : 'Verifying Your Payment...'}
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 break-words">
+            {failed ? 'Payment Failed' : checking ? 'Checking Payment Status' : 'Payment Pending'}
           </h1>
-          <p className="text-slate-600 max-w-sm mx-auto text-sm">
-            {searchParams.status === 'failed'
-              ? 'No download access was granted. If your bank shows a charge, recheck this order or contact support.'
-              : 'We are confirming your transaction with the bank before enabling your digital download.'}
+          <p className="text-slate-600 max-w-lg mx-auto text-sm leading-relaxed">
+            {failed
+              ? 'The gateway reported an unsuccessful payment. No download access was granted. If you were charged, your saved order will update when Easebuzz confirms the final result.'
+              : checking
+                ? 'Loading the latest result for your order.'
+                : 'The bank has not confirmed this payment yet. This page updates automatically when a confirmed result arrives.'}
           </p>
         </div>
-        {verificationError && (
-          <div className="max-w-md mx-auto p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-xs flex items-start gap-3 text-left">
-            <AlertTriangle className="w-5 h-5 shrink-0" />
-            <div className="space-y-3">
-              <p>{verificationError}</p>
-              <button 
-                onClick={handleReconcile}
-                className="px-4 py-2 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 transition-colors"
-              >
-                Manual Reconcile Now
-              </button>
-            </div>
-          </div>
-        )}
+        {verificationError && <p className={`max-w-md mx-auto p-4 rounded-2xl text-sm break-words ${failed ? 'bg-red-50 text-red-800 border border-red-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}`}>{verificationError}</p>}
+        <div className="flex justify-center max-w-md mx-auto">
+          <button onClick={() => navigate('/account')}
+            className="px-5 py-3 bg-white border border-slate-200 text-slate-800 font-bold rounded-xl min-h-[44px]">
+            View My Orders
+          </button>
+        </div>
+        <p className="text-xs text-slate-500 break-all">Order: {searchParams.orderId}</p>
       </div>
     );
   }
@@ -437,13 +457,13 @@ export const CheckoutPage: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Email Address <span className="text-slate-400 font-normal">(for file delivery)</span>
+                    Account Email <span className="text-slate-400 font-normal">(for file delivery)</span>
                   </label>
                   <input
                     type="email"
                     required
                     value={customerEmail}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    readOnly
                     placeholder="alex@company.com"
                     className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -469,15 +489,7 @@ export const CheckoutPage: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Billing Country</label>
-                  <select
-                    value={billingCountry}
-                    onChange={(e) => setBillingCountry(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700"
-                  >
-                    <option value="India">India</option>
-                    <option value="Singapore">Singapore</option>
-                    <option value="Worldwide">Other (Worldwide)</option>
-                  </select>
+                  <div className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700">India</div>
                 </div>
               </div>
             </div>

@@ -90,7 +90,7 @@ export const ForgotPasswordPage: React.FC = () => {
                 </div>
                 <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight truncate">Reset Password</h1>
                 <p className="text-blue-100 text-xs sm:text-sm mt-1 line-clamp-2">
-                  Verify your email and mobile to reset your account password.
+                  Use your registered email and mobile number to reset your password.
                 </p>
               </div>
             </div>
@@ -241,7 +241,7 @@ export const ForgotPasswordPage: React.FC = () => {
                 {isLoading ? (
                   <>
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
-                    <span className="truncate">Verifying Account...</span>
+                    <span className="truncate">Resetting Password...</span>
                   </>
                 ) : (
                   <>

@@ -1,9 +1,11 @@
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import crypto from 'crypto';
+import { isIP } from 'node:net';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import cors from 'cors';
+import { z } from 'zod';
 import { AuthServiceServer } from './auth';
 import { FirebaseRtdb } from './firebaseRtdb';
 import { AuditLogger, generateRequestId } from './audit';
@@ -12,7 +14,7 @@ import { PRODUCTS, COUPONS } from '../src/data/products';
 import { adminRouter } from './adminRoutes';
 import { runServerSeed } from './seed';
 import { mergeProductCatalog } from './productCatalog';
-import { easebuzzRetrieveHash, findPaidPurchase, isPaidOrderForProduct, matchesVerifiedEasebuzzPayment } from './paymentAccess';
+import { easebuzzRetrieveHash, findPaidPurchase, isPaidOrderForProduct, matchesEasebuzzPaymentIdentity, matchesVerifiedEasebuzzPayment } from './paymentAccess';
 import {
   buildEmailDownloadUrl,
   buildInvoiceDownloadUrl,
@@ -27,6 +29,7 @@ import {
   buildEasebuzzInitiatePayload,
   formatEasebuzzAmount,
   getEasebuzzBaseUrl,
+  getEasebuzzDashboardUrl,
   sanitizeFieldText,
   sanitizePhoneNumber,
   verifyEasebuzzCallbackHash,
@@ -37,16 +40,16 @@ runServerSeed().catch(err => console.warn('Startup seed error:', err));
 
 const EASEBUZZ_KEY = (process.env.EASEBUZZ_KEY || '').trim();
 const EASEBUZZ_SALT = (process.env.EASEBUZZ_SALT || '').trim();
-const rawEasebuzzEnv = (process.env.EASEBUZZ_ENV || 'test').trim().toLowerCase();
-const EASEBUZZ_ENV: 'prod' | 'test' = rawEasebuzzEnv.startsWith('prod') ? 'prod' : 'test';
+const rawEasebuzzEnv = (process.env.EASEBUZZ_ENV || '').trim().toLowerCase();
+const EASEBUZZ_ENV_VALID = ['test', 'prod', 'production'].includes(rawEasebuzzEnv) ||
+  (!rawEasebuzzEnv && process.env.NODE_ENV !== 'production');
+const EASEBUZZ_ENV: 'prod' | 'test' = ['prod', 'production'].includes(rawEasebuzzEnv) ? 'prod' : 'test';
 const CRON_SECRET = process.env.CRON_SECRET || '';
 
 const EASEBUZZ_BASE_URL = getEasebuzzBaseUrl(EASEBUZZ_ENV);
-const EASEBUZZ_DASHBOARD_URL = EASEBUZZ_ENV === 'prod'
-  ? 'https://dashboard.easebuzz.in'
-  : 'https://testdashboard.easebuzz.in';
+const EASEBUZZ_DASHBOARD_URL = getEasebuzzDashboardUrl(EASEBUZZ_ENV);
 
-const getHostUrl = (req: Request): string => {
+const getConfiguredAppUrl = (): string => {
   if (process.env.APP_URL) {
     try {
       const configured = new URL(process.env.APP_URL);
@@ -58,7 +61,11 @@ const getHostUrl = (req: Request): string => {
       // An invalid configured URL must never become a gateway callback.
     }
   }
-  if (process.env.NODE_ENV === 'production') return 'https://www.ffdigital.shop';
+  return 'https://www.ffdigital.shop';
+};
+
+const getHostUrl = (req: Request): string => {
+  if (process.env.APP_URL || process.env.NODE_ENV === 'production') return getConfiguredAppUrl();
   const forwardedHost = req.headers['x-forwarded-host'];
   const host = Array.isArray(forwardedHost) ? forwardedHost[0] : (forwardedHost || req.headers.host);
   const proto = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
@@ -66,7 +73,17 @@ const getHostUrl = (req: Request): string => {
     const cleanHost = String(host).split(',')[0].trim();
     return `${proto}://${cleanHost}`.replace(/\/+$/, '');
   }
-  return 'https://www.ffdigital.shop';
+  return getConfiguredAppUrl();
+};
+
+const getPaymentRequestIp = (req: Request): string => {
+  // Vercel sets this header from the client connection and prevents spoofing.
+  const forwarded = process.env.VERCEL
+    ? req.headers['x-vercel-forwarded-for'] || req.headers['x-forwarded-for']
+    : undefined;
+  const candidate = String(Array.isArray(forwarded) ? forwarded[0] : forwarded || req.ip || '')
+    .split(',')[0].trim();
+  return isIP(candidate) ? candidate : '';
 };
 
 const getProductCatalog = async (): Promise<any[]> => {
@@ -89,7 +106,20 @@ app.use(helmet({
 
 app.use(cors({
   origin: (origin, callback) => {
-    callback(null, true);
+    if (!origin || origin.replace(/\/+$/, '') === getConfiguredAppUrl()) {
+      return callback(null, true);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const url = new URL(origin);
+        if (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)) {
+          return callback(null, true);
+        }
+      } catch {
+        // Reject malformed origins.
+      }
+    }
+    return callback(null, false);
   },
   credentials: true,
 }));
@@ -125,7 +155,8 @@ const authRateLimiter = async (req: Request, res: Response, next: NextFunction) 
     await FirebaseRtdb.set(key, record);
     next();
   } catch {
-    next();
+    // Do not permit unlimited login guesses when the shared limiter is down.
+    res.status(503).json({ success: false, message: 'Authentication is temporarily unavailable.' });
   }
 };
 
@@ -174,10 +205,9 @@ app.get('/api/firebase-status', async (req: Request, res: Response) => {
   res.json({
     status: 'ok',
     firebase: {
-      databaseUrl: status.url,
       connected: status.connected,
       mode: status.mode,
-      error: status.error,
+      ...(process.env.NODE_ENV !== 'production' ? { databaseUrl: status.url, error: status.error } : {}),
     },
   });
 });
@@ -187,6 +217,9 @@ app.get('/api/products', async (req: Request, res: Response) => {
   try {
     res.json({ success: true, products: await getProductCatalog() });
   } catch {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(503).json({ success: false, message: 'Product catalog is temporarily unavailable.' });
+    }
     res.json({ success: true, products: mergeProductCatalog(PRODUCTS, []) });
   }
 });
@@ -202,6 +235,25 @@ app.get('/api/products/:slugOrId', async (req: Request, res: Response) => {
     res.json({ success: true, product: found });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message || 'Failed to fetch product.' });
+  }
+});
+
+app.post('/api/newsletter/subscribe', authRateLimiter, async (req: Request, res: Response) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ success: false, message: 'Enter a valid email address.' });
+  }
+  try {
+    const key = crypto.createHash('sha256').update(email).digest('hex');
+    const path = `newsletterSubscribers/${key}`;
+    const existing = await FirebaseRtdb.get<any>(path);
+    const now = new Date().toISOString();
+    await FirebaseRtdb.set(path, {
+      email, subscribedAt: existing?.subscribedAt || now, lastConsentAt: now, status: 'subscribed',
+    });
+    res.json({ success: true, message: 'Your subscription was saved.' });
+  } catch {
+    res.status(503).json({ success: false, message: 'Could not save your subscription. Please retry.' });
   }
 });
 
@@ -277,12 +329,9 @@ app.post('/api/auth/forgot-password', authRateLimiter, async (req, res) => {
   try {
     const { email, mobile, newPassword, confirmNewPassword } = req.body;
     const result = await AuthServiceServer.resetPasswordWithEmailAndMobile({ email, mobile, newPassword, confirmNewPassword });
-    if (!result.success) {
-      return res.status(400).json(result);
-    }
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ success: false, message: 'Password reset failed.' });
+    res.status(result.success ? 200 : 400).json(result);
+  } catch {
+    res.status(503).json({ success: false, message: 'Password reset is temporarily unavailable.' });
   }
 });
 
@@ -329,6 +378,26 @@ app.get('/api/user/sync-all', requireAuth, async (req: AuthenticatedRequest, res
     res.json({ success: true, data: { profile, cart, wishlist, orders, downloads, settings } });
   } catch {
     res.status(500).json({ success: false, message: 'Failed to sync user data.' });
+  }
+});
+
+app.put('/api/user/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const parsed = z.object({
+    name: z.string().trim().min(2).max(100).optional(),
+    company: z.string().trim().max(150).optional(),
+    country: z.string().trim().min(2).max(100).optional(),
+  }).strict().safeParse(req.body);
+  if (!parsed.success || Object.keys(parsed.data || {}).length === 0) {
+    return res.status(400).json({ success: false, message: 'Only name, company and country can be updated.' });
+  }
+  try {
+    const profile = await FirebaseRtdb.getUserProfile(req.userId!);
+    if (!profile) return res.status(404).json({ success: false, message: 'Account not found.' });
+    const updatedAt = new Date().toISOString();
+    await FirebaseRtdb.updateUserProfile(req.userId!, { ...parsed.data, updatedAt });
+    res.json({ success: true, user: { ...profile, ...parsed.data, updatedAt } });
+  } catch {
+    res.status(503).json({ success: false, message: 'Could not save profile changes.' });
   }
 });
 
@@ -379,13 +448,49 @@ app.get('/api/user/orders', requireAuth, async (req: AuthenticatedRequest, res) 
   }
 });
 
+app.get('/api/user/downloads', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const downloads = await FirebaseRtdb.getUserDownloads(req.userId!);
+    const checked = await Promise.all(downloads.map(async (download: any) => {
+      if (!download?.orderId || !download?.productId) return null;
+      const order = await FirebaseRtdb.getGlobalOrder(download.orderId);
+      return isPaidOrderForProduct(order, req.userId!, download.productId) ? download : null;
+    }));
+    res.set('Cache-Control', 'private, no-store, max-age=0');
+    res.json({ success: true, downloads: checked.filter(Boolean) });
+  } catch {
+    res.status(503).json({ success: false, message: 'Could not fetch downloads.' });
+  }
+});
+
 app.get('/api/orders/:orderId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const order = await FirebaseRtdb.getUserOrderById(req.userId!, req.params.orderId);
     if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+    res.set('Cache-Control', 'private, no-store, max-age=0');
     res.json({ success: true, order });
   } catch {
     res.status(500).json({ success: false, message: 'Failed to fetch order.' });
+  }
+});
+
+app.get('/api/orders/:orderId/invoice', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const order = await FirebaseRtdb.getUserOrderById(req.userId!, req.params.orderId);
+    if (!order) return res.status(404).send('Order not found.');
+    if (String(order.paymentStatus).toUpperCase() !== 'PAID' ||
+        order.paymentProvider !== 'Easebuzz' || !order.transactionId) {
+      return res.status(403).send('A verified paid order is required for an invoice.');
+    }
+    const invoice = await buildInvoicePdf(order);
+    const invoiceNumber = String(order.invoiceNumber || `INV-${order.id}`)
+      .replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 80);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoiceNumber}.pdf"`);
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    return res.status(200).send(invoice);
+  } catch {
+    return res.status(503).send('Invoice is temporarily unavailable.');
   }
 });
 
@@ -395,6 +500,17 @@ const handleOrderCreation = async (req: AuthenticatedRequest, res: Response) => 
   try {
     const userId = req.userId!;
     const { items, customer, discountCode, paymentMethod } = req.body;
+    const buyerProfile = await FirebaseRtdb.getUserProfile(userId);
+    const buyerEmail = String(buyerProfile?.email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
+      return res.status(400).json({ success: false, message: 'Add a valid email to your account before checkout.', requestId });
+    }
+    if (customer?.email && String(customer.email).trim().toLowerCase() !== buyerEmail) {
+      return res.status(400).json({ success: false, message: 'Checkout email must match your account email.', requestId });
+    }
+    if (customer?.country && String(customer.country).trim().toLowerCase() !== 'india') {
+      return res.status(400).json({ success: false, message: 'Only India is supported for this checkout.', requestId });
+    }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: 'Cart items are required.', requestId });
@@ -479,7 +595,7 @@ const handleOrderCreation = async (req: AuthenticatedRequest, res: Response) => 
       date: now.split('T')[0],
       createdAt: now,
       updatedAt: now,
-      customerEmail: customer?.email || req.userEmail,
+      customerEmail: buyerEmail,
       customerName: customer?.fullName || 'Customer',
       productId: primaryProductId,
       productNameSnapshot: primaryProductName,
@@ -492,10 +608,10 @@ const handleOrderCreation = async (req: AuthenticatedRequest, res: Response) => 
       currency: 'INR',
       customer: {
         fullName: customer?.fullName || 'Customer',
-        email: customer?.email || req.userEmail,
+        email: buyerEmail,
         phone: customer?.phone || '',
         company: customer?.company || '',
-        country: customer?.country || 'India',
+        country: 'India',
       },
       items: validatedItems,
       subtotal: calculatedSubtotal,
@@ -540,7 +656,7 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     const { orderId, agreeTerms } = req.body;
     const userId = req.userId!;
 
-    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT || !EASEBUZZ_ENV_VALID) {
       return res.status(503).json({ success: false, message: 'Easebuzz payment gateway is not configured yet.' });
     }
 
@@ -555,6 +671,9 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     const order = await FirebaseRtdb.getUserOrderById(userId, orderId);
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+    if (String(order.customer?.country || '').trim().toLowerCase() !== 'india') {
+      return res.status(400).json({ success: false, message: 'Only India is supported for this checkout.' });
     }
 
     if (String(order.paymentStatus).toUpperCase() === 'PAID' ||
@@ -585,14 +704,22 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     const txnid = `${order.orderNumber || 'ORD'}_${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 35);
     
     const rawFirstname = order.customer?.fullName || order.customerName || 'Customer';
-    const firstname = sanitizeFieldText(String(rawFirstname).trim().split(' ')[0].replace(/[^a-zA-Z0-9]/g, ''), 50, 'Customer');
+    const firstname = sanitizeFieldText(rawFirstname, 50, 'Customer');
     
     const email = String(order.customer?.email || order.customerEmail || req.userEmail || '').trim().toLowerCase();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email || !emailRegex.test(email)) {
       return res.status(400).json({ success: false, message: 'A valid customer email is required for payment.' });
     }
-    const productinfo = 'FFDigital Products';
+    const productinfo = sanitizeFieldText(
+      (order.items || []).map((item: any) => item.productTitle || item.productId).filter(Boolean).join(', '),
+      100, 'FFDigital Products',
+    );
+    const initiatedAt = new Date().toISOString();
+    const buyerIp = getPaymentRequestIp(req);
+    const itemIds = sanitizeFieldText(
+      (order.items || []).map((item: any) => item.productId).filter(Boolean).join(','), 100,
+    );
 
     const baseAppUrl = getHostUrl(req);
     const surl = `${baseAppUrl}/api/payments/easebuzz/callback`;
@@ -609,16 +736,13 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
       phone,
       surl,
       furl,
-      udf1: '',
-      udf2: '',
-      udf3: '',
-      udf4: '',
-      udf5: '',
-      udf6: '',
-      udf7: '',
-      udf8: '',
-      udf9: '',
-      udf10: '',
+      udf1: order.id,
+      udf2: 'India',
+      udf3: initiatedAt,
+      udf4: buyerIp,
+      udf5: initiatedAt,
+      udf6: itemIds,
+      udf7: 'terms-refund-privacy:accepted',
     });
 
     const ebzResponse = await fetch(`${EASEBUZZ_BASE_URL}/payment/initiateLink`, {
@@ -640,6 +764,14 @@ app.post('/api/payments/easebuzz/initiate', requireAuth, async (req: Authenticat
     }
 
     if (ebzData && ebzData.status === 1 && ebzData.data) {
+      order.customer = { ...order.customer, country: 'India' };
+      order.paymentInitiatedAt = initiatedAt;
+      order.paymentInitiationIp = buyerIp || null;
+      order.termsAccepted = true;
+      order.termsAcceptedAt = initiatedAt;
+      order.termsAcceptedPolicies = ['terms', 'refund', 'privacy'];
+      order.termsDocumentUrl = `${baseAppUrl}/terms`;
+      order.easebuzzProductInfo = productinfo;
       order.transactionId = txnid;
       order.easebuzzTxnId = txnid;
       order.easebuzzAccessKey = ebzData.data;
@@ -684,14 +816,16 @@ const fulfillPaidOrder = async (order: any): Promise<void> => {
       await FirebaseRtdb.savePurchase(order.userId, purchaseId, {
         purchaseId, userId: order.userId, orderId: order.id,
         productId: item.productId, productTitle: item.productTitle,
-        purchasedAt: now, accessStatus: 'active', downloadLimit: 10, downloadCount: 0,
+        purchasedAt: order.paymentVerifiedAt || now, deliveredAt: now,
+        invoiceNumber: order.invoiceNumber,
+        accessStatus: 'active', downloadLimit: 10, downloadCount: 0,
       });
     }
     if (!downloads.some((download: any) => download.downloadId === downloadId)) {
       await FirebaseRtdb.saveUserDownload(order.userId, downloadId, {
         id: downloadId, downloadId, orderId: order.id,
         productId: item.productId, productTitle: item.productTitle,
-        status: 'AVAILABLE', createdAt: now,
+        status: 'AVAILABLE', createdAt: now, deliveredAt: now,
         downloadUrl: item.downloadUrl, fileSize: item.fileSize, fileFormat: item.fileFormat,
       });
     }
@@ -699,6 +833,10 @@ const fulfillPaidOrder = async (order: any): Promise<void> => {
 
   order.fulfillmentStatus = 'READY';
   order.fulfilledAt = order.fulfilledAt || now;
+  order.deliveredAt = order.deliveredAt || now;
+  order.deliveryStatus = 'DELIVERED';
+  order.downloadStatus = 'AVAILABLE';
+  order.items = order.items.map((item: any) => ({ ...item, downloadStatus: 'AVAILABLE' }));
   await FirebaseRtdb.saveGlobalOrder(order);
 };
 
@@ -759,6 +897,7 @@ const createPurchaseInvoiceLink = async (order: any): Promise<string> => {
 
 const sendPurchaseEmailSafely = async (order: any): Promise<void> => {
   if (order.emailDelivery?.status === 'sent') return;
+  if (order.deliveryStatus !== 'DELIVERED' || !order.fulfilledAt) return;
 
   const attemptedAt = new Date().toISOString();
   const previousAttempts = Number(order.emailDelivery?.attempts || 0);
@@ -815,8 +954,11 @@ const sendPurchaseEmailSafely = async (order: any): Promise<void> => {
 };
 
 // Shared server-side verification and synchronization helper
-async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ success: boolean; status?: string; message?: string; orderId?: string }> {
-  if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+async function verifyAndSyncEasebuzzOrder(
+  orderIdOrTxnId: string,
+  source = 'EASEBUZZ_RECONCILE',
+): Promise<{ success: boolean; status?: string; message?: string; orderId?: string; retryable?: boolean }> {
+  if (!EASEBUZZ_KEY || !EASEBUZZ_SALT || !EASEBUZZ_ENV_VALID) {
     return { success: false, message: 'Easebuzz payment gateway is not configured yet.' };
   }
 
@@ -834,14 +976,20 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
     if (globalOrder.paymentProvider !== 'Easebuzz' || !globalOrder.transactionId) {
       return { success: false, status: 'PENDING', orderId: globalOrder.id, message: 'Payment must be verified with Easebuzz.' };
     }
+    const needsInvoiceMetadata = !globalOrder.invoiceNumber || !globalOrder.paymentVerifiedAt;
+    globalOrder.invoiceNumber ||= `INV-${globalOrder.id}`;
+    globalOrder.paymentVerifiedAt ||= globalOrder.updatedAt || new Date().toISOString();
+    if (needsInvoiceMetadata) {
+      await FirebaseRtdb.saveGlobalOrder(globalOrder);
+    }
     try {
       await fulfillPaidOrder(globalOrder);
       await sendPurchaseEmailSafely(globalOrder);
-    } catch {
-      // A retryable email/fulfillment lookup issue must not change a paid order
-      // into a failed payment response.
+    } catch (error) {
+      console.error('Paid order fulfillment needs retry:', globalOrder.id, error);
     }
-    return { success: true, status: 'PAID', orderId: globalOrder.id, message: 'Already paid' };
+    return { success: true, status: 'PAID', orderId: globalOrder.id,
+      message: globalOrder.deliveryStatus === 'DELIVERED' ? 'Payment confirmed.' : 'Payment confirmed. Delivery is still being prepared.' };
   }
 
   // Initiation stores the gateway txnid on the pending order. It can differ
@@ -866,21 +1014,34 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
       signal: AbortSignal.timeout(10000),
     });
   } catch {
-    return { success: false, status: 'PENDING', orderId: globalOrder.id, message: 'Payment gateway verification is unavailable. Please retry.' };
+    return { success: false, status: 'PENDING', orderId: globalOrder.id, retryable: true, message: 'Payment gateway verification is unavailable. Please retry.' };
   }
 
   if (!verifyRes.ok) {
-    return { success: false, status: 'PENDING', orderId: globalOrder.id, message: 'Payment gateway verification is unavailable. Please retry.' };
+    return { success: false, status: 'PENDING', orderId: globalOrder.id, retryable: true, message: 'Payment gateway verification is unavailable. Please retry.' };
   }
   let verifyData: any;
   try {
     verifyData = await verifyRes.json();
   } catch {
-    return { success: false, status: 'PENDING', orderId: globalOrder.id, message: 'Payment gateway response could not be verified. Please retry.' };
+    return { success: false, status: 'PENDING', orderId: globalOrder.id, retryable: true, message: 'Payment gateway response could not be verified. Please retry.' };
   }
   const payment = verifyData?.data;
-  if (Number(verifyData?.status) !== 1 || !matchesVerifiedEasebuzzPayment(payment, globalOrder, EASEBUZZ_KEY)) {
+  if (Number(verifyData?.status) !== 1 || !matchesEasebuzzPaymentIdentity(payment, globalOrder, EASEBUZZ_KEY)) {
     return { success: false, status: 'PENDING', orderId: globalOrder.id, message: 'Payment has not been verified for this order.' };
+  }
+  const gatewayStatus = String(payment.status || '').toLowerCase();
+  if (['failure', 'failed', 'usercancelled', 'cancelled'].includes(gatewayStatus)) {
+    // A callback can race with a successful webhook. Never report failure
+    // after a different handler has already stored a verified paid order.
+    const latestOrder = await FirebaseRtdb.getGlobalOrder(globalOrder.id);
+    if (latestOrder?.paymentStatus === 'PAID' && latestOrder.paymentProvider === 'Easebuzz' && latestOrder.transactionId) {
+      return verifyAndSyncEasebuzzOrder(globalOrder.id, source);
+    }
+    return { success: false, status: 'FAILED', orderId: globalOrder.id, message: 'Easebuzz reported that this payment failed.' };
+  }
+  if (!matchesVerifiedEasebuzzPayment(payment, globalOrder, EASEBUZZ_KEY)) {
+    return { success: false, status: 'PENDING', orderId: globalOrder.id, message: 'Payment is still pending at Easebuzz.' };
   }
 
   const easebuzzId = payment.easepayid || payment.transaction_id || txnid;
@@ -889,79 +1050,130 @@ async function verifyAndSyncEasebuzzOrder(orderIdOrTxnId: string): Promise<{ suc
   globalOrder.status = 'PAID';
   globalOrder.paymentStatus = 'PAID';
   globalOrder.orderStatus = 'PAID';
-  globalOrder.deliveryStatus = 'DELIVERED';
-  globalOrder.downloadStatus = 'AVAILABLE';
+  globalOrder.deliveryStatus = 'PENDING';
+  globalOrder.downloadStatus = 'UNAVAILABLE';
+  globalOrder.paymentVerifiedAt = now;
+  globalOrder.invoiceNumber = globalOrder.invoiceNumber || `INV-${globalOrder.id}`;
   globalOrder.transactionId = easebuzzId;
   globalOrder.paymentId = easebuzzId;
   globalOrder.paymentProvider = 'Easebuzz';
   globalOrder.updatedAt = now;
 
-  globalOrder.items = (globalOrder.items || []).map((item: any) => ({
-    ...item,
-    downloadStatus: 'AVAILABLE',
-  }));
-
   // Save to BOTH global and user orders via saveGlobalOrder
   await FirebaseRtdb.saveGlobalOrder(globalOrder);
 
-  await fulfillPaidOrder(globalOrder);
-
-  await AuditLogger.log({
+  // Record the gateway result before provisioning. A retry can recover a paid
+  // order even when a later Firebase, file or email operation fails.
+  try {
+    await AuditLogger.log({
     requestId: generateRequestId(),
     userId: globalOrder.userId,
     orderId: globalOrder.id,
     eventType: 'PAYMENT_VERIFICATION_SUCCESS',
     eventStatus: 'SUCCESS',
-    source: 'EASEBUZZ_CALLBACK',
+    source,
     metadata: { easebuzzId, amount: expectedAmount },
-  });
+    });
+  } catch (error) {
+    console.error('Payment audit log needs repair:', globalOrder.id, error);
+  }
 
-  await sendPurchaseEmailSafely(globalOrder);
+  try {
+    await fulfillPaidOrder(globalOrder);
+    await sendPurchaseEmailSafely(globalOrder);
+  } catch (error) {
+    console.error('Paid order fulfillment needs retry:', globalOrder.id, error);
+  }
 
-  return { success: true, status: 'PAID', orderId: globalOrder.id };
+  return { success: true, status: 'PAID', orderId: globalOrder.id,
+    message: globalOrder.deliveryStatus === 'DELIVERED' ? 'Payment confirmed.' : 'Payment confirmed. Delivery is still being prepared.' };
 }
+
+const notificationMatchesOrder = (params: any, order: any): boolean =>
+  Boolean(order && params.key === EASEBUZZ_KEY && params.txnid === order.easebuzzTxnId &&
+    Number.isFinite(Number(params.amount)) && Number(params.amount) === Number(order.total));
+
+const isFailedEasebuzzStatus = (status: unknown): boolean =>
+  ['failure', 'failed', 'usercancelled', 'cancelled'].includes(String(status || '').toLowerCase());
+
+const recordPaymentNotification = async (req: Request, order: any, source: 'EASEBUZZ_CALLBACK' | 'EASEBUZZ_WEBHOOK') => {
+  try {
+    await AuditLogger.log({
+      requestId: generateRequestId(), userId: order.userId, orderId: order.id,
+      eventType: source === 'EASEBUZZ_CALLBACK' ? 'EASEBUZZ_CALLBACK_RECEIVED' : 'WEBHOOK_RECEIVED',
+      eventStatus: 'PENDING', source,
+      metadata: { txnid: req.body.txnid, gatewayStatus: String(req.body.status || '').slice(0, 40) },
+      ip: getPaymentRequestIp(req), userAgent: req.headers['user-agent'],
+    });
+  } catch (error) {
+    console.error('Payment notification audit could not be saved:', order.id, error);
+  }
+};
 
 app.post('/api/payments/easebuzz/callback', async (req: Request, res: Response) => {
   try {
-    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT) {
+    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT || !EASEBUZZ_ENV_VALID) {
       return res.status(503).send('Easebuzz payment gateway is not configured yet.');
     }
 
     const params = req.body;
-    if (!verifyEasebuzzCallbackHash(params, EASEBUZZ_SALT)) {
+    if (!params || typeof params.txnid !== 'string' || typeof params.status !== 'string' ||
+        !verifyEasebuzzCallbackHash(params, EASEBUZZ_SALT)) {
       return res.status(400).send('Invalid signature');
     }
 
     const txnid = params.txnid;
-    const status = params.status;
-
     const globalOrder = await FirebaseRtdb.getGlobalOrder(txnid);
-    if (!globalOrder) {
-      return res.status(404).send('Order not found');
+    if (!notificationMatchesOrder(params, globalOrder)) {
+      return res.status(400).send('Payment notification does not match an order');
     }
 
     const baseAppUrl = getHostUrl(req);
-    if (String(globalOrder.paymentStatus).toUpperCase() === 'PAID') {
-      return res.redirect(`${baseAppUrl}/checkout?status=success&orderId=${globalOrder.id}`);
-    }
-    if (status !== 'success') {
-      globalOrder.status = 'FAILED';
-      globalOrder.paymentStatus = 'FAILED';
-      globalOrder.orderStatus = 'FAILED';
-      globalOrder.failureReason = params.error_Message || 'Payment failed on gateway';
-      globalOrder.updatedAt = new Date().toISOString();
-      await FirebaseRtdb.saveGlobalOrder(globalOrder);
-      return res.redirect(`${baseAppUrl}/checkout?status=failed&orderId=${globalOrder.id}`);
-    }
-
-    const syncResult = await verifyAndSyncEasebuzzOrder(txnid);
+    await recordPaymentNotification(req, globalOrder, 'EASEBUZZ_CALLBACK');
+    const syncResult = await verifyAndSyncEasebuzzOrder(txnid, 'EASEBUZZ_CALLBACK');
     if (syncResult.success) {
       return res.redirect(`${baseAppUrl}/checkout?status=success&orderId=${globalOrder.id}`);
-    } else {
-      return res.redirect(`${baseAppUrl}/checkout?status=pending&orderId=${globalOrder.id}`);
     }
+    if (syncResult.status === 'FAILED' || isFailedEasebuzzStatus(params.status)) {
+      return res.redirect(`${baseAppUrl}/checkout?status=failed&orderId=${globalOrder.id}`);
+    }
+    return res.redirect(`${baseAppUrl}/checkout?status=pending&orderId=${globalOrder.id}`);
   } catch (err: any) {
     res.status(500).send('Internal server error');
+  }
+});
+
+// Optional gateway notification. The browser callback and authenticated
+// reconciliation paths remain independent safety nets.
+app.post('/api/payments/easebuzz/webhook', async (req: Request, res: Response) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!EASEBUZZ_KEY || !EASEBUZZ_SALT || !EASEBUZZ_ENV_VALID) {
+      return res.status(503).json({ success: false, message: 'Payment gateway is not configured.' });
+    }
+
+    const params = req.body;
+    if (!params || typeof params !== 'object' ||
+        typeof params.txnid !== 'string' || typeof params.key !== 'string' ||
+        params.key !== EASEBUZZ_KEY || !verifyEasebuzzCallbackHash(params, EASEBUZZ_SALT)) {
+      return res.status(400).json({ success: false, message: 'Invalid payment notification.' });
+    }
+
+    const order = await FirebaseRtdb.getGlobalOrder(params.txnid);
+    if (!notificationMatchesOrder(params, order)) {
+      return res.status(400).json({ success: false, message: 'Payment notification does not match an order.' });
+    }
+
+    await recordPaymentNotification(req, order, 'EASEBUZZ_WEBHOOK');
+    // Success and failure reports use the same authoritative retrieval path.
+    const result = await verifyAndSyncEasebuzzOrder(order.id, 'EASEBUZZ_WEBHOOK');
+    if (result.retryable) {
+      return res.status(503).json({ success: false, status: 'PENDING' });
+    }
+    return res.json({ success: true, status: result.status || 'PENDING' });
+  } catch (error) {
+    console.error('Easebuzz webhook processing failed:', error);
+    return res.status(503).json({ success: false, message: 'Payment notification could not be processed.' });
   }
 });
 
@@ -993,14 +1205,15 @@ app.post('/api/payments/easebuzz/reconcile/:orderId', async (req: AuthenticatedR
     }
 
     const result = await verifyAndSyncEasebuzzOrder(orderId);
+    res.set('Cache-Control', 'private, no-store, max-age=0');
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message || 'Reconciliation failed.' });
   }
 });
 
-// Cron reconciliation for stuck payments and retryable purchase emails.
-app.post('/api/payments/easebuzz/reconcile-cron', async (req: Request, res: Response) => {
+// Vercel Cron invokes GET with Authorization: Bearer <CRON_SECRET>.
+const reconcileCron = async (req: Request, res: Response) => {
   try {
     const cronHeader = req.headers['x-cron-secret'] || req.headers['authorization']?.replace('Bearer ', '');
     if (!CRON_SECRET || cronHeader !== CRON_SECRET) {
@@ -1011,17 +1224,17 @@ app.post('/api/payments/easebuzz/reconcile-cron', async (req: Request, res: Resp
     const tenMinsAgo = Date.now() - 10 * 60 * 1000;
     const reconciliationOrders = allOrders.filter((order) => {
       const paymentStatus = String(order.paymentStatus).toUpperCase();
-      const isStuckPayment = (
+      const isStuckPayment = Boolean(order.easebuzzTxnId) && (
         order.status === 'PENDING_PAYMENT' || paymentStatus === 'PENDING'
-      ) && new Date(order.createdAt || order.date || 0).getTime() < tenMinsAgo;
+      ) && new Date(order.updatedAt || order.createdAt || order.date || 0).getTime() < tenMinsAgo;
       const lastEmailAttempt = new Date(order.emailDelivery?.lastAttemptAt || 0).getTime();
       const needsEmailRetry = (
         paymentStatus === 'PAID' &&
-        order.emailDelivery?.status !== 'sent' &&
+        (order.emailDelivery?.status !== 'sent' || !order.fulfilledAt || !order.deliveredAt) &&
         lastEmailAttempt < tenMinsAgo
       );
       return isStuckPayment || needsEmailRetry;
-    });
+    }).slice(0, 20);
 
     const results = [];
     for (const ord of reconciliationOrders) {
@@ -1033,7 +1246,9 @@ app.post('/api/payments/easebuzz/reconcile-cron', async (req: Request, res: Resp
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message || 'Cron reconciliation failed.' });
   }
-});
+};
+app.get('/api/payments/easebuzz/reconcile-cron', reconcileCron);
+app.post('/api/payments/easebuzz/reconcile-cron', reconcileCron);
 
 // ============================================
 // SECURE DOWNLOAD TOKENS & STREAMING (RTDB ONLY)

@@ -78,6 +78,9 @@ export class AuthServiceServer {
       }
       return null;
     }
+    const profile = await FirebaseRtdb.getUserProfile(session.userId);
+    if (!profile || (profile.sessionValidAfter &&
+        new Date(session.createdAt).getTime() < Number(profile.sessionValidAfter))) return null;
     return {
       userId: session.userId,
       email: session.email,
@@ -237,9 +240,6 @@ export class AuthServiceServer {
     };
   }
 
-  /**
-   * Forgot Password Reset Flow
-   */
   public static async resetPasswordWithEmailAndMobile(data: {
     email: string;
     mobile: string;
@@ -253,10 +253,10 @@ export class AuthServiceServer {
       return { success: false, message: genericError };
     }
 
-    const cleanMobile = mobile.toString().trim().replace(/\D/g, '').slice(0, 10);
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanMobile = String(mobile).trim().replace(/\D/g, '');
+    const cleanEmail = String(email).trim().toLowerCase();
 
-    if (cleanMobile.length !== 10) {
+    if (!/^[6-9][0-9]{9}$/.test(cleanMobile) || !cleanEmail.includes('@')) {
       return { success: false, message: genericError };
     }
 
@@ -274,7 +274,7 @@ export class AuthServiceServer {
     }
 
     const profile = await FirebaseRtdb.getUserProfile(userId);
-    if (!profile || !profile.mobile) {
+    if (!profile || !profile.mobile || String(profile.email || '').trim().toLowerCase() !== cleanEmail) {
       return { success: false, message: genericError };
     }
 
@@ -284,6 +284,7 @@ export class AuthServiceServer {
 
     const newPasswordHash = await this.hashPassword(newPassword);
     await FirebaseRtdb.updatePasswordHash(userId, newPasswordHash);
+    await FirebaseRtdb.updateUserProfile(userId, { sessionValidAfter: Date.now() });
 
     return {
       success: true,

@@ -7,7 +7,7 @@ export function isPaidOrderForProduct(order: any, userId: string, productId: str
     String(order.paymentStatus).toUpperCase() === 'PAID' &&
     order.paymentProvider === 'Easebuzz' && Boolean(order.transactionId) &&
     !['REFUNDED', 'PARTIALLY_REFUNDED', 'REVOKED', 'CANCELLED', 'FAILED'].includes(String(order.status).toUpperCase()) &&
-    order.deliveryStatus !== 'REVOKED' && order.downloadStatus !== 'REVOKED' &&
+    order.deliveryStatus === 'DELIVERED' && order.downloadStatus === 'AVAILABLE' &&
     Array.isArray(order.items) && order.items.some((item: any) => item.productId === productId)
   );
 }
@@ -34,15 +34,20 @@ export function easebuzzRetrieveHash(key: string, txnid: string, salt: string): 
   return generateEasebuzzRetrieveHash({ key, txnid, salt });
 }
 
-export function matchesVerifiedEasebuzzPayment(data: any, order: any, merchantKey: string): boolean {
+export function matchesEasebuzzPaymentIdentity(data: any, order: any, merchantKey: string): boolean {
   const expectedAmount = Number(order.total);
   const receivedAmount = Number(data?.amount);
   return Boolean(
-    data && String(data.status).toLowerCase() === 'success' &&
+    data &&
     data.txnid === (order.easebuzzTxnId || order.transactionId || order.orderNumber || order.id) &&
     (!data.key || data.key === merchantKey) &&
     Number.isFinite(expectedAmount) && expectedAmount > 0 &&
     Number.isFinite(receivedAmount) && receivedAmount > 0 &&
     Math.round(expectedAmount * 100) === Math.round(receivedAmount * 100)
   );
+}
+
+export function matchesVerifiedEasebuzzPayment(data: any, order: any, merchantKey: string): boolean {
+  return matchesEasebuzzPaymentIdentity(data, order, merchantKey) &&
+    String(data.status).toLowerCase() === 'success';
 }
